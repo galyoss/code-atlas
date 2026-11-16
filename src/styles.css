@@ -993,6 +993,9 @@ button svg {
   pointer-events: none;
   color: var(--muted);
 }
+.canvas-area:has(.canvas-hint.is-offscreen) .overview-caption {
+  display: none;
+}
 .overview-caption span {
   font: 9px var(--mono);
   letter-spacing: 1.5px;
