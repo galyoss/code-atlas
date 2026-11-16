@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from export_fastapi.facts import (
+from scanner.facts import (
     BindingFact,
     CallFact,
     EntryParamFact,
@@ -13,11 +13,11 @@ from export_fastapi.facts import (
     RouteFact,
     SymbolFact,
 )
-from export_fastapi.fastapi.calls import Budget, build_calls, walk
-from export_fastapi.fastapi.paths import is_schema_path, join_paths, normalize_path
-from export_fastapi.overlay import CallRec
-from export_fastapi.project import Project
-from export_fastapi.source_index import FuncInfo, SourceIndex
+from scanner.fastapi.calls import Budget, build_calls, walk
+from scanner.fastapi.paths import is_schema_path, join_paths, normalize_path
+from scanner.overlay import CallRec
+from scanner.project import Project
+from scanner.source_index import FuncInfo, SourceIndex
 
 _HTTP = (
     "get",

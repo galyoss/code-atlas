@@ -6,10 +6,10 @@ Joern is not required. The overlay is the same shape export_overlay.sc writes.
 import json
 from pathlib import Path
 
-from export_fastapi.check_fields import access_predicates, auth_observations
-from export_fastapi.cli import export_repository
-from export_fastapi.facts import Limits
-from export_fastapi.validate import validate_document
+from scanner.check_fields import access_predicates, auth_observations
+from scanner.scan import export_repository
+from scanner.facts import Limits
+from scanner.validate import validate_document
 
 SCHEMA = Path(__file__).resolve().parents[1] / "docs" / "code-graph-schema.json"
 

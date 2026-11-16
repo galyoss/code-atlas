@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from export_fastapi.check_fields import access_predicates, auth_observations, routes_by_method_path
-from export_fastapi.cli import export_repository
-from export_fastapi.joern_runner import find_home
-from export_fastapi.validate import validate_document
+from scanner.check_fields import access_predicates, auth_observations, routes_by_method_path
+from scanner.scan import export_repository
+from scanner.joern_runner import find_home
+from scanner.validate import validate_document
 
 PIN = "46055c0b9adffe51fb168974f79dfadaa6edd612"
 SCHEMA = Path(__file__).resolve().parents[1] / "docs" / "code-graph-schema.json"

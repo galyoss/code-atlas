@@ -8,17 +8,17 @@ from __future__ import annotations
 
 import re
 
-from export_fastapi.facts import (
+from scanner.facts import (
     DataAccessFact,
     ParamFlowFact,
     RouteFact,
     SymbolFact,
     WrittenFieldFact,
 )
-from export_fastapi.fastapi.calls import walk
-from export_fastapi.fastapi.predicates import predicate_from_cpg
-from export_fastapi.fastapi.routes import RouteAnalysis
-from export_fastapi.project import Project
+from scanner.fastapi.calls import walk
+from scanner.fastapi.predicates import predicate_from_cpg
+from scanner.fastapi.routes import RouteAnalysis
+from scanner.project import Project
 
 _MODEL_RE = re.compile(r"\b(select|query|update|delete)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)")
 _ADD_RE = re.compile(r"\.add\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)")

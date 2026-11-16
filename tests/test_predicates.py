@@ -1,7 +1,7 @@
 """Predicate and path decisions, without Joern."""
 
-from export_fastapi.fastapi.paths import is_schema_path, join_paths, normalize_path
-from export_fastapi.fastapi.predicates import instance_owner_compare, predicate_from_cpg
+from scanner.fastapi.paths import is_schema_path, join_paths, normalize_path
+from scanner.fastapi.predicates import instance_owner_compare, predicate_from_cpg
 
 
 def test_owner_comparison_is_yes():

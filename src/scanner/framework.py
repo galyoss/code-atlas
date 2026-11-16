@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from export_fastapi.facts import AuthStepFact, DataAccessFact, RouteFact
-from export_fastapi.project import Project
+from scanner.facts import AuthStepFact, DataAccessFact, RouteFact
+from scanner.project import Project
 
 
 class FrameworkAdapter(Protocol):

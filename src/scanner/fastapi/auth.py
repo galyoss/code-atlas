@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import re
 
-from export_fastapi.facts import AuthStepFact, RouteFact
-from export_fastapi.fastapi.calls import build_calls
-from export_fastapi.fastapi.predicates import instance_owner_compare
-from export_fastapi.fastapi.routes import RouteAnalysis, _ensure_function_symbol, is_auth_callable
-from export_fastapi.project import Project
+from scanner.facts import AuthStepFact, RouteFact
+from scanner.fastapi.calls import build_calls
+from scanner.fastapi.predicates import instance_owner_compare
+from scanner.fastapi.routes import RouteAnalysis, _ensure_function_symbol, is_auth_callable
+from scanner.project import Project
 
 _SKIP_CALLS = {"build_auth_context", "build_metadata_filter"}
 

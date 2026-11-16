@@ -1,7 +1,7 @@
 [project]
-name = "export-fastapi"
+name = "scanner"
 version = "1.0.0"
-description = "Export FastAPI routes to a code-graph schema 1.0.0 document using Joern pysrc2cpg."
+description = "Code scanner that writes a code-graph schema 1.0.0 document. The current command exports FastAPI routes."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -14,13 +14,13 @@ dev = [
 ]
 
 [project.scripts]
-export-fastapi = "export_fastapi.cli:main"
+export-fastapi = "scanner.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-export_fastapi = ["export_overlay.sc"]
+scanner = ["export_overlay.sc"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

@@ -8,10 +8,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from export_fastapi.facts import CallFact, Limits, SymbolFact
-from export_fastapi.overlay import CallRec, Overlay
-from export_fastapi.project import Project
-from export_fastapi.source_index import FuncInfo, SourceIndex
+from scanner.facts import CallFact, Limits, SymbolFact
+from scanner.overlay import CallRec, Overlay
+from scanner.project import Project
+from scanner.source_index import FuncInfo, SourceIndex
 
 _AWAIT = re.compile(r"^\s*await\s+")
 _SELECT = re.compile(r"\b(select|query)\s*\(")

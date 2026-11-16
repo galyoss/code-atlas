@@ -8,8 +8,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from export_fastapi.overlay import Overlay, load_overlay_file
-from export_fastapi.source_index import EXCLUDE_DIRS, iter_python_files
+from scanner.overlay import Overlay, load_overlay_file
+from scanner.source_index import EXCLUDE_DIRS, iter_python_files
 
 INSTALL = (
     "Joern 4.0.684 is required. Download the archive for this machine from "

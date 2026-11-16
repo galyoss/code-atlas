@@ -6,11 +6,11 @@ The schema writer does not import this module.
 
 from __future__ import annotations
 
-from export_fastapi.facts import AuthStepFact, DataAccessFact, RouteFact
-from export_fastapi.fastapi.auth import read_auth_steps
-from export_fastapi.fastapi.routes import discover_routes
-from export_fastapi.fastapi.sql import read_data_accesses
-from export_fastapi.project import Project
+from scanner.facts import AuthStepFact, DataAccessFact, RouteFact
+from scanner.fastapi.auth import read_auth_steps
+from scanner.fastapi.routes import discover_routes
+from scanner.fastapi.sql import read_data_accesses
+from scanner.project import Project
 
 
 class FastAPIAdapter:

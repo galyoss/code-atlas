@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
-from export_fastapi.facts import CallFact, Limits, RepoFact, RouteFact
+from scanner.facts import CallFact, Limits, RepoFact, RouteFact
 
 _GAPS = [
     (
