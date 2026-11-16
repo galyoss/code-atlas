@@ -3,3 +3,15 @@ dist/
 .work/
 *.local
 .DS_Store
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+workspace/
+.cache/
+build/
+data/
