@@ -97,7 +97,8 @@ Tests independently traverse raw JSON to verify the exact symbol, call-pair and
 reference sets. They also cover source fidelity, same-name/ID distinctions,
 unresolved-parent boundaries, multiple open branches, collapse/history, pointer
 zoom, initial framing and fixed non-overlapping glyphs. Visual acceptance uses the
-actual production build and is documented separately by the behavior verifier.
+actual production build; results and scope are recorded in
+[`ATLAS_NETWORK_VERIFICATION.md`](docs/ATLAS_NETWORK_VERIFICATION.md).
 
 # Scanner
 
