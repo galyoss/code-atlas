@@ -133,8 +133,9 @@ access paths, complete entry flow and route/auth identity, independent visibilit
 layers, collapse/history, pointer zoom, semantic band order, source-map round trips
 and non-overlapping glyphs. Visual acceptance uses the
 actual production build; results and scope are recorded in
-[`ATLAS_NETWORK_VERIFICATION.md`](docs/ATLAS_NETWORK_VERIFICATION.md) and the
-[controls/data verification](docs/ATLAS_CONTROLS_VERIFICATION.md).
+[`ATLAS_NETWORK_VERIFICATION.md`](docs/ATLAS_NETWORK_VERIFICATION.md), the
+[controls/data verification](docs/ATLAS_CONTROLS_VERIFICATION.md), and the
+[entry-flow/layout verification](docs/ATLAS_ENTRY_FLOW_VERIFICATION.md).
 
 # Scanner
 
