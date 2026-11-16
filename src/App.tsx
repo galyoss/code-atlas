@@ -213,9 +213,8 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
         <div className="network-caption">
           <span>AEGRA / CODE ATLAS</span>
           <p>
-            {symbolsVisible} symbols <i>·</i>{' '}
-            {graph.edges.filter((edge) => edge.aggregated).length} recorded call
-            links
+            {symbolsVisible}/{graph.baseIds.length} symbols shown <i>·</i>{' '}
+            {graph.edges.filter((edge) => edge.aggregated).length} total call links
             {detailCount > 0 && (
               <>
                 {' '}
