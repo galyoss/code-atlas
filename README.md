@@ -29,6 +29,6 @@ The pinned check is aegra tag `v0.11.0` at `46055c0b9adffe51fb168974f79dfadaa6ed
 
 ## Scan API
 
-`scan-api` is a small HTTP service: `POST /scans`, `GET /scans/{id}`, and `GET /scans/{id}/graph`. It clones the requested GitHub revision and calls `scanner.scan.export_repository`. It stores `model`, `agentCount`, and `agreementThreshold` on the job and does not run agents. A graph with no agent review is `partial`, and `unresolvedGaps` stay in the document.
+`scan-api` is a FastAPI app: `POST /scans`, `GET /scans/{id}`, `GET /scans/{id}/graph`, and `GET /health`. It clones the requested GitHub revision and calls `scanner.scan.export_repository`. It stores `model`, `agentCount`, and `agreementThreshold` on the job and does not run agents. A graph with no agent review is `partial`, and `unresolvedGaps` stay in the document.
 
-The Railway image is `python:3.12-slim` plus `git` (`Dockerfile`). The Joern 4.0.684 Linux archive is about 1.8 GB and needs Java 21, so this image does not include `pysrc2cpg`. When that binary is missing, `POST /scans` returns `status: failed` and does not clone or pretend a scan ran. Set `JOERN_HOME` where the binary exists. `GITHUB_TOKEN` is optional and is sent only as a git HTTP header for private repositories.
+The Railway image is `python:3.12-slim`, `git`, Temurin 21, and Joern 4.0.684 (`JOERN_HOME=/opt/joern-cli`). The Linux archive is about 1.8 GB because it ships every language frontend. The image keeps `pysrc2cpg`, `joern`, and `lib`, and drops the other frontends. If `pysrc2cpg` is still missing at runtime, `POST /scans` returns `failed` and does not pretend a scan ran. `GITHUB_TOKEN` is optional and is sent only as a git HTTP header for private repositories.

@@ -2,14 +2,14 @@
 
 import json
 import subprocess
-import threading
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
 from scan_api.access import AccessError, ProbeFailure, Revision, clone_at, parse_github_url, resolve_revision
-from scan_api.server import serve
+from scan_api.server import app, create_app
 from scan_api.service import ScanService
 from scan_api.store import Store
 
@@ -237,33 +237,31 @@ def test_clone_checks_out_the_commit(tmp_path):
     assert (dest / "app.py").read_text(encoding="utf-8") == "print('ok')\n"
 
 
+def test_app_import_is_fastapi():
+    assert isinstance(app, FastAPI)
+
+
 def test_http_routes(tmp_path):
     service = _service(tmp_path)
-    server = serve("127.0.0.1", 0, service)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    port = server.server_address[1]
-    try:
-        health, health_body = _request(port, "GET", "/health")
-        assert health == 200 and health_body["status"] == "ok"
+    client = TestClient(create_app(service))
+    health = client.get("/health")
+    assert health.status_code == 200 and health.json()["status"] == "ok"
 
-        missing, missing_body = _request(port, "POST", "/scans", {"repositoryUrl": "https://example.com/a"})
-        assert missing == 422
-        assert "GitHub" in missing_body["error"]
+    missing = client.post("/scans", json={"repositoryUrl": "https://example.com/a", "model": "reviewer"})
+    assert missing.status_code == 422
+    assert "GitHub" in missing.json()["error"]
 
-        created_status, created = _request(port, "POST", "/scans", _body())
-        assert created_status == 202
-        service.execute(created["id"])
-        got, job = _request(port, "GET", f"/scans/{created['id']}")
-        assert got == 200
-        assert job["status"] == "partial"
-        assert "not implemented" in job["progress"]
-        graph_status, document = _request(port, "GET", f"/scans/{created['id']}/graph")
-        assert graph_status == 200
-        assert document["schemaVersion"] == "1.0.0"
-        assert document["unresolvedGaps"] == GRAPH["unresolvedGaps"]
-    finally:
-        server.shutdown()
+    created = client.post("/scans", json=_body())
+    assert created.status_code == 202
+    service.execute(created.json()["id"])
+    got = client.get(f"/scans/{created.json()['id']}")
+    assert got.status_code == 200
+    assert got.json()["status"] == "partial"
+    assert "not implemented" in got.json()["progress"]
+    graph = client.get(f"/scans/{created.json()['id']}/graph")
+    assert graph.status_code == 200
+    assert graph.json()["schemaVersion"] == "1.0.0"
+    assert graph.json()["unresolvedGaps"] == GRAPH["unresolvedGaps"]
 
 
 def test_worker_thread_reaches_partial(tmp_path):
@@ -280,13 +278,3 @@ def test_worker_thread_reaches_partial(tmp_path):
     assert job is not None
     assert job["status"] == "partial"
 
-
-def _request(port: int, method: str, path: str, payload: dict | None = None):
-    data = None if payload is None else json.dumps(payload).encode()
-    headers = {"Content-Type": "application/json"} if data is not None else {}
-    request = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=data, method=method, headers=headers)
-    try:
-        with urllib.request.urlopen(request) as response:
-            return response.status, json.load(response)
-    except urllib.error.HTTPError as exc:
-        return exc.code, json.load(exc)

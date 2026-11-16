@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
-from scan_api.server import serve
+import os
+
+import uvicorn
+
+from scan_api.server import app
 
 
 def main() -> None:
-    server = serve()
-    host, port = server.server_address[:2]
+    host = os.environ.get("HOST", "0.0.0.0")
+    port = int(os.environ.get("PORT", "8080"))
     print(f"scan-api listening on http://{host}:{port}", flush=True)
-    server.serve_forever()
+    uvicorn.run(app, host=host, port=port, log_level="info")
 
 
 if __name__ == "__main__":
