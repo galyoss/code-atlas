@@ -2,7 +2,7 @@
 
 `scanner` (`src/scanner`) is the code scanner. It writes one [code-graph schema 1.0.0](docs/code-graph-schema.json) document. FastAPI still runs Joern `pysrc2cpg` and reads SQLAlchemy `where` / `filter` text, with `Depends` and import aliases filled from the Python AST. Express uses `jssrc2cpg`. Rails uses `rubysrc2cpg`. `inPredicate` is taken from the call text. If that text does not contain the comparison, the value is `unknown`.
 
-GraphQL, WebSockets, dynamic dispatch, web frameworks other than FastAPI, Express, and Rails, and an LLM judge are recorded in `unresolvedGaps`.
+GraphQL, WebSockets, dynamic dispatch, web frameworks other than FastAPI, Express, and Rails, and an LLM judge are recorded in `unresolvedGaps`. Findings are not fields of the graph.
 
 The `export-fastapi` command is a thin entry point. It parses arguments and calls `scanner`.
 
@@ -29,6 +29,12 @@ The pinned check is aegra tag `v0.11.0` at `46055c0b9adffe51fb168974f79dfadaa6ed
 
 ## Scan API
 
-`scan-api` is a FastAPI app: `POST /scans`, `GET /scans/{id}`, `GET /scans/{id}/graph`, and `GET /health`. It clones the requested GitHub revision and calls `scanner.scan.export_repository`. It stores `model`, `agentCount`, and `agreementThreshold` on the job and does not run agents. A graph with no agent review is `partial`, and `unresolvedGaps` stay in the document.
+`scan-api` is a FastAPI app: `POST /scans`, `GET /scans/{id}`, `GET /scans/{id}/graph`, and `GET /health`. It clones the requested GitHub revision and calls `scanner.scan.export_repository`. After a schema 1.0.0 graph exists, the checkout is deleted and `review` runs each registered check once per route. A check is a hunter prompt and a skeptic prompt. v1 registers IDOR only. The runner does not name vulnerabilities; a later check is another pair and another pass.
+
+For each route and check the runner makes `agentCount` calls on the scan's `model`, alternating hunter and skeptic. Each call receives that route, the neighbor routes it links, and the symbol-index entries those name. A vote is `check`, `routeId`, `role` (`hunter` or `skeptic`), `verdict` (`present`, `absent`, or `inconclusive`), and a short `reason`. A finding is written only when `present` votes on that route and check reach `agreementThreshold`. It stores the check id, route id, threshold, present count, and those vote ids. It does not merge reasons. Votes below the threshold are kept.
+
+Partial slice coverage, or a missing snippet the check needs, stores a `present` vote as `inconclusive`. A timeout, non-JSON, a vote for another route, or an unknown verdict is `inconclusive`, the graph is still returned, and the scan stays `partial`. The scan is `completed` only when every route has a full vote set for every registered check and no review call failed. Missing `model`, or `agreementThreshold` above `agentCount`, is rejected before any call. This version does not call a live model.
+
+`GET /scans/{id}` returns the votes and findings. `GET /scans/{id}/graph` is still the schema 1.0.0 document. `unresolvedGaps` stay in that document.
 
 The Railway image is `python:3.12-slim`, `git`, Temurin 21, and Joern 4.0.684 (`JOERN_HOME=/opt/joern-cli`). The Linux archive is about 1.8 GB because it ships every language frontend. The image keeps `pysrc2cpg`, `jssrc2cpg`, `rubysrc2cpg`, `joern`, and `lib`, and drops the other frontends. If the frontend for the selected adapter is missing at runtime, `POST /scans` returns `failed` and does not pretend a scan ran. `GITHUB_TOKEN` is optional and is sent only as a git HTTP header for private repositories.

@@ -34,7 +34,7 @@ GRAPH = {
 }
 
 
-def _service(tmp_path, *, joern=True, export=None, clone=None, resolve=None):
+def _service(tmp_path, *, joern=True, export=None, clone=None, resolve=None, model_client=None):
     def default_resolve(url, revision):
         return Revision("https://github.com/acme/app", "acme", "app", revision or "main", SHA)
 
@@ -50,6 +50,7 @@ def _service(tmp_path, *, joern=True, export=None, clone=None, resolve=None):
         clone=clone or default_clone,
         export=export or default_export,
         joern_home=(lambda: Path("/opt/joern")) if joern else (lambda: None),
+        model_client=model_client,
     )
 
 
@@ -64,12 +65,18 @@ def _body(**overrides):
 
 def test_invalid_config_does_not_resolve(tmp_path):
     calls = []
+    model_calls = []
 
     def resolve(url, revision):
         calls.append(url)
         raise AssertionError("should not probe")
 
-    service = _service(tmp_path, resolve=resolve)
+    class Model:
+        def complete(self, **kwargs):
+            model_calls.append(kwargs)
+            raise AssertionError("model should not be called")
+
+    service = _service(tmp_path, resolve=resolve, model_client=Model())
     status, body = service.create(_body(agreementThreshold=3, agentCount=2))
     assert status == 400
     assert "agreementThreshold (3)" in body["error"]
@@ -87,6 +94,7 @@ def test_invalid_config_does_not_resolve(tmp_path):
     status, body = service.create(_body(agentCount=True))
     assert status == 400
     assert "agentCount" in body["error"]
+    assert model_calls == []
 
 
 def test_repository_access_failure_does_not_start(tmp_path):
@@ -120,14 +128,18 @@ def test_missing_pysrc2cpg_does_not_clone(tmp_path):
     assert cloned == []
 
 
-def test_graph_without_agents_is_partial_and_keeps_gaps(tmp_path):
+def test_graph_with_no_routes_completes_and_keeps_gaps(tmp_path):
     seen = {}
 
     def export(path: Path):
         seen["path"] = path
         return json.loads(json.dumps(GRAPH))
 
-    service = _service(tmp_path, export=export)
+    class Model:
+        def complete(self, **kwargs):
+            raise AssertionError("no route, so no model call")
+
+    service = _service(tmp_path, export=export, model_client=Model())
     status, created = service.create(_body(revision="feature/x", agentCount=4, agreementThreshold=3))
     assert status == 202
     assert created["status"] == "queued"
@@ -135,16 +147,21 @@ def test_graph_without_agents_is_partial_and_keeps_gaps(tmp_path):
     assert created["agentCount"] == 4
     assert created["agreementThreshold"] == 3
     assert created["graph"] is None
+    assert created["votes"] == []
+    assert created["findings"] == []
 
     service.execute(created["id"])
     status, job = service.get(created["id"])
     assert status == 200
-    assert job["status"] == "partial"
-    assert job["progress"] == "Agent review is not implemented. The code graph is available."
+    assert job["status"] == "completed"
+    assert job["progress"] == "Every route has a full vote set."
     assert job["error"] is None
+    assert job["votes"] == []
+    assert job["findings"] == []
     assert job["graph"]["unresolvedGaps"] == GRAPH["unresolvedGaps"]
     assert job["graph"]["schemaVersion"] == "1.0.0"
     assert "findings" not in job["graph"]
+    assert "votes" not in job["graph"]
     assert seen["path"].is_dir() is False
 
     code, document = service.graph(created["id"])
@@ -256,15 +273,18 @@ def test_http_routes(tmp_path):
     service.execute(created.json()["id"])
     got = client.get(f"/scans/{created.json()['id']}")
     assert got.status_code == 200
-    assert got.json()["status"] == "partial"
-    assert "not implemented" in got.json()["progress"]
+    assert got.json()["status"] == "completed"
+    assert got.json()["votes"] == []
+    assert got.json()["findings"] == []
     graph = client.get(f"/scans/{created.json()['id']}/graph")
     assert graph.status_code == 200
     assert graph.json()["schemaVersion"] == "1.0.0"
     assert graph.json()["unresolvedGaps"] == GRAPH["unresolvedGaps"]
+    assert "votes" not in graph.json()
+    assert "findings" not in graph.json()
 
 
-def test_worker_thread_reaches_partial(tmp_path):
+def test_worker_thread_reaches_completed(tmp_path):
     service = _service(tmp_path)
     service.start()
     _, created = service.create(_body())
@@ -272,9 +292,9 @@ def test_worker_thread_reaches_partial(tmp_path):
     job = None
     while time.time() < deadline:
         _, job = service.get(created["id"])
-        if job["status"] == "partial":
+        if job["status"] == "completed":
             break
         time.sleep(0.01)
     assert job is not None
-    assert job["status"] == "partial"
+    assert job["status"] == "completed"
 

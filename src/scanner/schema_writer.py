@@ -39,7 +39,7 @@ _GAPS = [
         "gap_llm_judge",
         "other",
         "unsupported",
-        "v1 does not run an LLM judge. This document is a code graph, not a finding.",
+        "This document is a code graph, not a finding.",
     ),
 ]
 
