@@ -15,6 +15,7 @@ dev = [
 
 [project.scripts]
 export-fastapi = "scanner.cli:main"
+scan-api = "scan_api.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

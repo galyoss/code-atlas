@@ -10,3 +10,4 @@ workspace/
 .cache/
 dist/
 build/
+data/
