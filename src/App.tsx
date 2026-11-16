@@ -23,7 +23,7 @@ import { matchingSymbols } from './graph/catalog';
 import type { LabelViewport } from './graph/labels';
 import { initialCamera, layoutGraph } from './graph/layout';
 import {
-  branchActionLabel,
+  primaryNodeAction,
   navigationVisibleIds,
   initialNavigation,
   navigate,
@@ -111,6 +111,9 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
   );
   const matches = useMemo(() => matchingSymbols(graph, query), [graph, query]);
   const selected = state.selected ? graph.nodes.get(state.selected)! : null;
+  const selectedAction = selected
+    ? primaryNodeAction(graph, state, selected.id)
+    : null;
   const flow = state.flowEntry
     ? flowIndex(graph).entries.get(state.flowEntry)!
     : null;
@@ -458,13 +461,13 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
               {selected.children.length > 0 && (
                 <button
                   className="primary-button"
-                  onClick={() => dispatch({ type: 'toggle', id: selected.id })}
+                  onClick={() => {
+                    if (selectedAction!.action.type === 'clear-flow')
+                      setPanel(null);
+                    dispatch(selectedAction!.action);
+                  }}
                 >
-                  {selected.kind === 'group'
-                    ? state.collapsed.has(selected.id)
-                      ? 'Open group'
-                      : 'Collapse group'
-                    : branchActionLabel(graph, state, selected.id)}
+                  {selectedAction!.label}
                   <ArrowRight size={14} />
                 </button>
               )}

@@ -270,14 +270,29 @@ export function manualBranchOpen(
     graph.nodes.get(id)!.children.some((child) => state.revealed.has(child))
   );
 }
-export function branchActionLabel(
+/** Keep the primary control's label and state transition in one semantic choice. */
+export function primaryNodeAction(
   graph: AtlasGraph,
   state: ViewSnapshot,
   id: string,
-) {
+): { label: string; action: NavigationAction } {
+  const action: NavigationAction = { type: 'toggle', id };
+  if (graph.nodes.get(id)!.kind === 'group')
+    return {
+      label: state.collapsed.has(id) ? 'Open group' : 'Collapse group',
+      action,
+    };
   if (automaticDetail(graph, state, id))
-    return state.view === 'data' ? 'Clear flow' : 'Collapse flow';
+    return state.view === 'data'
+      ? { label: 'Clear flow', action: { type: 'clear-flow' } }
+      : { label: 'Collapse flow', action };
   if (manualBranchOpen(graph, state, id))
-    return state.view === 'data' ? 'Collapse extra calls' : 'Collapse calls';
-  return branchOpen(graph, state, id) ? 'Open more calls' : 'Open detail';
+    return {
+      label: state.view === 'data' ? 'Collapse extra calls' : 'Collapse calls',
+      action,
+    };
+  return {
+    label: branchOpen(graph, state, id) ? 'Open more calls' : 'Open detail',
+    action,
+  };
 }

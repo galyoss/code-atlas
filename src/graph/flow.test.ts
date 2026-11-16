@@ -7,6 +7,7 @@ import {
   navigate,
   navigationVisibleIds,
   branchDepth,
+  primaryNodeAction,
 } from './navigation';
 import { ViewAnchors } from './view-layout';
 import { layoutGraph } from './layout';
@@ -255,6 +256,45 @@ describe('automatic, manual and mode visibility', () => {
     expect(state.flowEntry).toBeNull();
     expect(state.selected).toBeNull();
     expect(state.expanded).toEqual(manual);
+  });
+  it('primary Clear flow preserves overlapping manual calls and owner paths exactly like the top clear action', () => {
+    for (const withOwnerPaths of [false, true]) {
+      let state = navigate(graph, initialNavigation(), {
+        type: 'select',
+        id: 'sym_create_run',
+      });
+      state = navigate(graph, state, { type: 'depth', depth: 1 });
+      const manualDetails = [...navigationVisibleIds(graph, state)].filter(
+        (id) =>
+          !graph.nodes.get(id)!.canonical &&
+          graph.nodes.get(id)!.kind !== 'group',
+      );
+      expect(manualDetails).toHaveLength(10);
+      if (withOwnerPaths)
+        state = navigate(graph, state, {
+          type: 'accesses',
+          id: 'sym_create_run',
+        });
+      const saved = structuredClone(state),
+        savedVisible = navigationVisibleIds(graph, saved);
+      state = navigate(graph, state, { type: 'select', id: 'sym_create_run' });
+      state = navigate(graph, state, { type: 'view', view: 'data' });
+      const primary = primaryNodeAction(graph, state, 'sym_create_run');
+      expect(primary.label).toBe('Clear flow');
+      const cleared = navigate(graph, state, primary.action);
+      expect(cleared.expanded).toEqual(saved.expanded);
+      expect(cleared.revealed).toEqual(saved.revealed);
+      expect(cleared).toEqual(navigate(graph, state, { type: 'clear-flow' }));
+      expect(navigate(graph, cleared, { type: 'back' })).toEqual(state);
+      const code = navigate(graph, cleared, { type: 'view', view: 'code' });
+      expect(navigationVisibleIds(graph, code)).toEqual(savedVisible);
+      // Explicit collapse still removes the selected branch's manual detail.
+      const collapse = primaryNodeAction(graph, code, 'sym_create_run');
+      expect(collapse.label).toBe('Collapse calls');
+      expect(
+        navigate(graph, code, collapse.action).expanded.has('sym_create_run'),
+      ).toBe(false);
+    }
   });
   it('mode-only details come and go independently and Files preserves all saved layers', () => {
     let state = navigate(graph, initialNavigation(), {
