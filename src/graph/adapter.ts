@@ -95,7 +95,14 @@ export function adaptGraph(document: GraphDocument): AtlasGraph {
       aggregate(parentSymbol, call, evidence);
       const accesses = route.dataAccesses
         .filter((access) => access.callId === call.id)
-        .map((access) => ({ route, access }));
+        .map((access) => ({
+          route,
+          access,
+          occurrenceId: callNodeId(route.id, call.id, authStep?.id),
+        }));
+      // These records describe the immediate function body, never a guessed callee.
+      if (parentSymbol && symbols.has(parentSymbol))
+        nodes.get(parentSymbol)!.accesses.push(...accesses);
       const resolvedSymbol =
         call.resolution === 'resolved' && call.symbolId
           ? symbols.get(call.symbolId)
@@ -212,6 +219,7 @@ export function visibleIds(
   graph: AtlasGraph,
   expanded: ReadonlySet<string>,
   collapsed: ReadonlySet<string>,
+  revealed: ReadonlySet<string> = new Set(),
 ): Set<string> {
   const visible = new Set(graph.groups.map((group) => group.id));
   function visit(id: string) {
@@ -220,7 +228,25 @@ export function visibleIds(
   }
   for (const id of graph.baseIds)
     if (!collapsed.has(graph.nodes.get(id)!.groupId!)) visit(id);
+  for (const id of revealed) {
+    const node = graph.nodes.get(id)!;
+    if (!collapsed.has(node.groupId!)) visit(id);
+  }
   return visible;
+}
+
+/** Exact producer ancestry, with each route/auth-qualified occurrence kept distinct. */
+export function accessPathIds(graph: AtlasGraph, ownerId: string): Set<string> {
+  const paths = new Set<string>();
+  for (const { occurrenceId } of graph.nodes.get(ownerId)!.accesses) {
+    let node = graph.nodes.get(occurrenceId)!;
+    paths.add(node.id);
+    while (node.parent) {
+      node = graph.nodes.get(node.parent)!;
+      paths.add(node.id);
+    }
+  }
+  return paths;
 }
 
 /** Collapsed files keep their real boundary connections and the original evidence. */

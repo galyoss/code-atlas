@@ -6,12 +6,23 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ArrowLeft, ArrowRight, Code2, Orbit, Search, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Code2,
+  Database,
+  Orbit,
+  PanelLeft,
+  Search,
+  X,
+} from 'lucide-react';
 import { loadScan, scan } from './data';
 import { visibleIds } from './graph/adapter';
 import { matchingSymbols } from './graph/catalog';
+import type { LabelViewport } from './graph/labels';
 import { DetailAnchors, initialCamera, layoutGraph } from './graph/layout';
 import {
+  branchOpen,
   initialNavigation,
   navigate,
   type NavigationAction,
@@ -20,6 +31,13 @@ import {
 import type { AtlasGraph } from './graph/types';
 import { GraphCanvas } from './components/GraphCanvas';
 import { SourcePanel } from './components/SourcePanel';
+import { GraphControls } from './components/GraphControls';
+import {
+  accessSummary,
+  dataEffect,
+  effectGlyph,
+  effectLabel,
+} from './graph/semantics';
 
 export default function App() {
   const [graph, setGraph] = useState<AtlasGraph | null>(null),
@@ -60,18 +78,20 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
     (state: NavigationState, action: NavigationAction) =>
       navigate(graph, state, action),
     undefined,
-    initialNavigation,
+    () => initialNavigation(!window.matchMedia('(max-width: 760px)').matches),
   );
   const [panel, setPanel] = useState<'source' | 'scope' | null>(null),
     [query, setQuery] = useState('');
+  const [labelViewport, setLabelViewport] = useState<LabelViewport>();
   const sourceButton = useRef<HTMLButtonElement>(null),
     scopeButton = useRef<HTMLButtonElement>(null),
+    railButton = useRef<HTMLButtonElement>(null),
     canvasArea = useRef<HTMLDivElement>(null);
   const layout = useMemo(() => layoutGraph(graph), [graph]);
   const anchors = useMemo(() => new DetailAnchors(layout), [layout]);
   const visible = useMemo(
-    () => visibleIds(graph, state.expanded, state.collapsed),
-    [graph, state.expanded, state.collapsed],
+    () => visibleIds(graph, state.expanded, state.collapsed, state.revealed),
+    [graph, state.expanded, state.collapsed, state.revealed],
   );
   const positions = useMemo(
     () => anchors.ensure(graph, visible),
@@ -79,6 +99,8 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
   );
   const matches = useMemo(() => matchingSymbols(graph, query), [graph, query]);
   const selected = state.selected ? graph.nodes.get(state.selected)! : null;
+  const selectedEffect = selected ? dataEffect(selected) : null;
+  const selectedAccesses = selected ? accessSummary(selected) : null;
   const symbolsVisible = [...visible].filter(
     (id) => graph.nodes.get(id)!.canonical,
   ).length;
@@ -98,6 +120,39 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
       ),
     });
   }, [layout, graph]);
+  useLayoutEffect(() => {
+    const canvas = canvasArea.current!;
+    const overlays = [
+      ...canvas.querySelectorAll<HTMLElement>(
+        '.graph-controls, .network-toolbar, .network-caption, .selection-bar, .source-panel, .camera-controls, .canvas-hint',
+      ),
+    ];
+    const measure = () => {
+      const bounds = canvas.getBoundingClientRect();
+      const next = {
+        width: bounds.width,
+        height: bounds.height,
+        blocked: overlays
+          .map((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+              x: rect.left - bounds.left - 4,
+              y: rect.top - bounds.top - 4,
+              width: rect.width + 8,
+              height: rect.height + 8,
+            };
+          })
+          .filter((rect) => rect.width > 8 && rect.height > 8),
+      };
+      setLabelViewport((current) =>
+        JSON.stringify(current) === JSON.stringify(next) ? current : next,
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    [canvas, ...overlays].forEach((element) => observer.observe(element));
+    return () => observer.disconnect();
+  }, [panel, state.selected, state.railOpen, state.view, query, visible]);
   const back = () => {
     setPanel(null);
     dispatch({ type: 'back' });
@@ -124,11 +179,15 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
       data-dataset="aegra-real"
       data-selected={state.selected || ''}
       data-scope="network"
+      data-view={state.view}
+      data-rail-open={state.railOpen}
       data-expanded={JSON.stringify([...state.expanded])}
+      data-revealed={JSON.stringify([...state.revealed])}
       data-collapsed={JSON.stringify([...state.collapsed])}
       onKeyDown={(event) => {
         if (event.key === 'Escape' && !event.defaultPrevented) {
           if (panel) setPanel(null);
+          else if (state.railOpen) dispatch({ type: 'rail', open: false });
           else if (query) setQuery('');
           else back();
         }
@@ -166,8 +225,29 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
           dispatch={dispatch}
           matches={matches}
           searching={!!query.trim()}
+          labelViewport={labelViewport}
         />
+        {state.railOpen && (
+          <GraphControls
+            graph={graph}
+            state={state}
+            dispatch={dispatch}
+            returnFocus={railButton}
+          />
+        )}
         <div className="network-toolbar">
+          <button
+            className="icon-button rail-toggle"
+            ref={railButton}
+            aria-label={
+              state.railOpen ? 'Hide graph controls' : 'Open graph controls'
+            }
+            aria-controls="graph-controls"
+            aria-expanded={state.railOpen}
+            onClick={() => dispatch({ type: 'rail', open: !state.railOpen })}
+          >
+            <PanelLeft size={16} />
+          </button>
           <button
             className="icon-button"
             onClick={back}
@@ -214,7 +294,8 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
           <span>AEGRA / CODE ATLAS</span>
           <p>
             {symbolsVisible}/{graph.baseIds.length} symbols shown <i>·</i>{' '}
-            {graph.edges.filter((edge) => edge.aggregated).length} total call links
+            {graph.edges.filter((edge) => edge.aggregated).length} total call
+            links
             {detailCount > 0 && (
               <>
                 {' '}
@@ -238,6 +319,14 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
               <div className="selection-heading">
                 <span className={`selection-dot ${selected.kind}`} />
                 <strong>{selected.name}</strong>
+                {selectedEffect && (
+                  <span
+                    className={`effect-badge ${selectedEffect}`}
+                    title={effectLabel(selectedEffect)}
+                  >
+                    {effectGlyph(selectedEffect)}
+                  </span>
+                )}
                 <span className="selection-kind">
                   {selected.canonical
                     ? selected.kind === 'route'
@@ -258,8 +347,41 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
                     ? `${selected.range.file}:${selected.range.startLine}–${selected.range.endLine}`
                     : selected.subtitle)}
               </small>
+              {selected.groupedRoutes && (
+                <div className="selection-routes">
+                  {selected.groupedRoutes.map((route) => (
+                    <span key={route.id}>
+                      <b>{route.httpMethod}</b> {route.pathTemplate}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {!!selectedAccesses?.total && (
+                <div className="selection-data">
+                  {selected.canonical
+                    ? `${selectedAccesses.read} read · ${selectedAccesses.write} write records in this body`
+                    : selected.accesses
+                        .map(
+                          ({ access }) =>
+                            `${access.operation} ${access.object.name}`,
+                        )
+                        .join(' · ')}
+                  {selected.call && ` · ${selected.call.resolution} target`}
+                </div>
+              )}
             </div>
             <div className="selection-actions">
+              {selected.canonical && selected.accesses.length > 0 && (
+                <button
+                  className="secondary-button reveal-accesses"
+                  onClick={() =>
+                    dispatch({ type: 'accesses', id: selected.id })
+                  }
+                >
+                  <Database size={13} />
+                  Reveal access paths
+                </button>
+              )}
               {selected.kind !== 'group' && (
                 <button
                   ref={sourceButton}
@@ -279,7 +401,7 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
                     ? state.collapsed.has(selected.id)
                       ? 'Open group'
                       : 'Collapse group'
-                    : state.expanded.has(selected.id)
+                    : branchOpen(graph, state, selected.id)
                       ? 'Collapse calls'
                       : 'Open detail'}
                   <ArrowRight size={14} />
@@ -302,10 +424,10 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
       <footer className="app-footer">
         <div className="legend" aria-label="Graph relationship legend">
           <span>
-            <i className="legend-dot handler" /> Handler
+            <i className="legend-dot handler" /> Entry
           </span>
           <span>
-            <i className="legend-dot symbol" /> Symbol
+            <i className="legend-dot symbol" /> Function
           </span>
           <span>
             <i className="legend-line call" /> Calls

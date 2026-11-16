@@ -977,3 +977,514 @@ button svg {
     animation: none !important;
   }
 }
+
+/* A quiet control rail floats above the same, fixed coordinate space. */
+.graph-controls {
+  position: absolute;
+  z-index: 10;
+  left: 18px;
+  top: 20px;
+  width: 216px;
+  max-height: calc(100% - 40px);
+  padding: 16px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  background: #101b21f5;
+  border: 1px solid #2a3d43;
+  border-radius: 8px;
+  box-shadow: 0 10px 35px #0003;
+}
+.rail-header,
+.rail-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.rail-header > span {
+  font: 9px var(--mono);
+  color: #809e9d;
+  letter-spacing: 2px;
+}
+.rail-header .icon-button {
+  background: transparent;
+  border: 0;
+  width: 24px;
+  height: 24px;
+  color: #829a9f;
+}
+.rail-section {
+  margin-top: 19px;
+}
+.rail-section + .rail-section {
+  padding-top: 18px;
+  border-top: 1px solid #26383e;
+}
+.rail-section h2,
+.rail-section h3 {
+  font-size: 11px;
+  font-weight: 500;
+  margin: 0 0 11px;
+  color: #d2e1e1;
+}
+.view-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.view-options button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 35px;
+  padding: 0 9px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #9aafb4;
+  text-align: left;
+  font-size: 11px;
+}
+.view-options button small {
+  margin-left: auto;
+  font: 9px var(--mono);
+  opacity: 0.65;
+}
+.view-options button:hover {
+  background: #1b2a31;
+}
+.view-options button[aria-pressed='true'] {
+  border-color: #385c50;
+  background: #1c342e;
+  color: #b3efd5;
+}
+.rail-note {
+  color: #8ba1a8;
+  font-size: 10px;
+  line-height: 1.6;
+  margin: 10px 0 0;
+}
+.view-description {
+  min-height: 48px;
+}
+.rail-section-heading > span {
+  color: #c6b48a;
+  font: 8px var(--mono);
+  margin-bottom: 10px;
+}
+.segmented-control,
+.depth-options {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: #0a141a;
+  border: 1px solid #263a41;
+  border-radius: 5px;
+}
+.segmented-control button,
+.depth-options button {
+  flex: 1;
+  padding: 7px 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #96adb4;
+  font-size: 10px;
+}
+.segmented-control button[aria-pressed='true'],
+.depth-options button[aria-pressed='true'] {
+  background: #294139;
+  color: #caf6e2;
+}
+.segmented-control button:hover:not(:disabled),
+.depth-options button:hover:not(:disabled) {
+  background: #22363d;
+}
+.depth-heading {
+  margin-top: 19px;
+}
+.depth-heading h3 {
+  font-size: 10px;
+  margin-bottom: 9px;
+  color: #9eb3b9;
+}
+.depth-options {
+  gap: 5px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.depth-options button {
+  border: 1px solid #2b4148;
+  font: 10px var(--mono);
+  height: 29px;
+}
+.depth-options button:disabled {
+  opacity: 0.35;
+}
+.depth-description {
+  min-height: 32px;
+}
+.depth-description > span {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #b0c5c7;
+  font-family: var(--mono);
+}
+.visual-key h2 {
+  margin-bottom: 14px;
+}
+.key-row,
+.key-effects,
+.key-line {
+  display: flex;
+  align-items: center;
+  font-size: 9px;
+  color: #a3b7bd;
+}
+.key-row {
+  gap: 6px;
+  margin-bottom: 13px;
+}
+.key-row > span:nth-child(2) {
+  margin-right: auto;
+}
+.key-entry {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--mint);
+  color: var(--mint);
+  background: #1d392f;
+  font: 11px var(--mono);
+}
+.key-function {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid #9eb4c5;
+  background: #1d303a;
+}
+.key-effects {
+  justify-content: space-between;
+  gap: 8px;
+}
+.key-effects > span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.effect-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 16px;
+  font: 8px var(--mono);
+  font-style: normal;
+  flex-shrink: 0;
+  border: 1px solid;
+}
+.effect-badge.read {
+  border-radius: 50%;
+  color: #b9d9f7;
+  border-color: #7498b9;
+  background: #203143;
+}
+.effect-badge.write {
+  border-radius: 2px;
+  color: #f2cd95;
+  border-color: #c29b63;
+  background: #3a3020;
+}
+.effect-badge.both {
+  width: 22px;
+  border-radius: 5px;
+  color: #d6c6f3;
+  border-color: #ab93cd;
+  background: #312b41;
+}
+.key-line {
+  gap: 9px;
+  margin-top: 12px;
+}
+.key-line i {
+  width: 20px;
+  border-top: 1px solid #7aaf9b;
+}
+.key-line.unresolved {
+  margin-top: 8px;
+}
+.key-line.unresolved i {
+  border-top: 1px dashed #c9a474;
+}
+.key-footnote {
+  margin-top: 15px;
+  font-size: 9px;
+  color: #79929a;
+}
+.atlas-app[data-rail-open='true'] .network-toolbar,
+.atlas-app[data-rail-open='true'] .network-caption {
+  left: 254px;
+}
+.atlas-app[data-rail-open='true'] .canvas-hint {
+  left: 254px;
+}
+.atlas-app[data-rail-open='true'] .selection-bar {
+  width: min(960px, calc(100% - 282px));
+  left: calc(50% + 117px);
+}
+.rail-toggle {
+  color: #a2caba;
+}
+.selection-bar {
+  width: min(960px, calc(100% - 48px));
+  gap: 14px;
+}
+.selection-routes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 70px;
+  overflow: auto;
+  margin-top: 8px;
+  font: 10px/1.5 var(--mono);
+  color: #b7d6cb;
+  overflow-wrap: anywhere;
+}
+.selection-routes b {
+  font-weight: 500;
+  color: #8cddbd;
+  margin-right: 5px;
+}
+.selection-data {
+  color: #b9b6cf;
+  font: 9px/1.5 var(--mono);
+  margin-top: 7px;
+  overflow-wrap: anywhere;
+}
+.selection-actions {
+  flex-shrink: 0;
+}
+.graph-node[data-effect='read'] .code-glyph {
+  width: 18px;
+  height: 17px;
+  color: #c2e3ff;
+  border-color: #9abfdd;
+  background: #23394c;
+  border-radius: 50%;
+}
+.graph-node[data-effect='write'] .code-glyph {
+  width: 18px;
+  height: 17px;
+  color: #f7d09a;
+  border-color: #d4ac6d;
+  background: #493821;
+  border-radius: 2px;
+}
+.graph-node[data-effect='both'] .code-glyph {
+  width: 22px;
+  height: 17px;
+  color: #e6d7ff;
+  border-color: #bca2df;
+  background: #403151;
+  border-radius: 5px;
+  font-size: 7px;
+}
+.graph-node[data-kind='gap'] .code-glyph {
+  border-style: dashed;
+}
+.entry-mark {
+  position: absolute;
+  left: 1px;
+  top: 1px;
+  width: 5px;
+  height: 5px;
+  background: var(--mint);
+  border: 1px solid #12241e;
+  border-radius: 1px;
+}
+.graph-node.is-context .code-glyph {
+  opacity: 0.24;
+}
+.graph-node.is-context .entry-mark,
+.graph-node.is-context .expansion-dot {
+  opacity: 0.24;
+}
+.graph-node.is-context .node-name {
+  opacity: 0.25;
+}
+.graph-node.is-selected .code-glyph,
+.graph-node:hover .code-glyph,
+.graph-node:focus-visible .code-glyph {
+  opacity: 1;
+  border-color: #d5ffe9;
+}
+.graph-node.is-selected .node-name,
+.graph-node:hover .node-name,
+.graph-node:focus-visible .node-name {
+  opacity: 1;
+}
+.atlas-app[data-view='entries']
+  .graph-node[data-emphasized='true']
+  .code-glyph {
+  box-shadow: 0 0 0 4px #91e9c519;
+}
+.atlas-app[data-view='data'] .graph-node[data-emphasized='true'] .code-glyph {
+  box-shadow: 0 0 0 4px #d6c6f31a;
+}
+.data-summary {
+  padding: 13px;
+  margin: 19px 0;
+  border: 1px solid #4a465c;
+  background: #272638;
+  border-radius: 5px;
+}
+.data-summary h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.source-panel .data-summary p {
+  margin: 8px 0 0;
+  font-size: 11px;
+}
+@media (max-width: 1100px) {
+  .selection-bar {
+    flex-wrap: wrap;
+  }
+  .selection-copy {
+    flex-basis: 100%;
+  }
+  .selection-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .selection-close {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+  }
+}
+@media (max-width: 760px) {
+  .graph-controls {
+    top: 60px;
+    left: 15px;
+    width: 236px;
+    max-height: calc(100% - 78px);
+    padding: 16px 20px;
+    background: #101c22fc;
+    box-shadow: 14px 10px 80px #0009;
+    z-index: 12;
+  }
+  .atlas-app[data-rail-open='true'] .network-toolbar {
+    left: 15px;
+  }
+  .atlas-app[data-rail-open='true'] .network-caption {
+    left: 17px;
+  }
+  .atlas-app[data-rail-open='true'] .selection-bar {
+    width: calc(100% - 30px);
+    left: 50%;
+  }
+  .network-toolbar {
+    width: calc(100% - 30px);
+    gap: 7px;
+  }
+  .network-search,
+  .network-search:has(button) {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+  .network-caption > span {
+    display: none;
+  }
+  .network-caption p {
+    margin-top: 4px;
+  }
+  .selection-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .selection-actions .primary-button,
+  .selection-actions .secondary-button {
+    flex: 1 1 auto;
+  }
+  .selection-actions .reveal-accesses {
+    flex-basis: 100%;
+  }
+  .selection-bar {
+    gap: 9px;
+  }
+  .view-description {
+    min-height: 0;
+  }
+  .rail-section {
+    margin-top: 15px;
+  }
+  .rail-section + .rail-section {
+    padding-top: 15px;
+  }
+  .depth-description {
+    min-height: 0;
+  }
+  .source-panel {
+    z-index: 20;
+  }
+  .graph-controls + .network-toolbar .rail-toggle {
+    background: #244338;
+    color: #b8ecd5;
+  }
+}
+.graph-node[data-kind='route'] .code-glyph {
+  color: var(--mint);
+  font-size: 11px;
+}
+.graph-node[data-kind='route'][data-effect='read'] .code-glyph {
+  color: #c2e3ff;
+  font-size: 8px;
+}
+.graph-node[data-kind='route'][data-effect='write'] .code-glyph {
+  color: #f7d09a;
+  font-size: 8px;
+}
+.graph-node[data-kind='route'][data-effect='both'] .code-glyph {
+  color: #e6d7ff;
+  font-size: 7px;
+}
+.entry-mark {
+  display: grid;
+  place-items: center;
+  left: -3px;
+  top: -3px;
+  width: 11px;
+  height: 11px;
+  background: #163c2c;
+  border: 1px solid #96ebc7;
+  border-radius: 2px;
+  color: #b9ffda;
+  font: 8px var(--mono);
+}
+.graph-node.is-muted .entry-mark {
+  opacity: 0.32;
+}
+
+.label-leader {
+  position: absolute;
+  left: 13px;
+  top: 13px;
+  height: 1px;
+  background: #718b91a0;
+  transform-origin: 0 0;
+  pointer-events: none;
+  z-index: -1;
+}
+.graph-node.is-muted .label-leader,
+.graph-node.is-context .label-leader {
+  opacity: 0.2;
+}

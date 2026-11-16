@@ -9,11 +9,22 @@ import {
   type PointerEvent,
 } from 'react';
 import { LocateFixed, Maximize, Minus, Plus } from 'lucide-react';
-import { visibleEdges } from '../graph/adapter';
-import { placeLabels } from '../graph/labels';
+import { accessPathIds, visibleEdges } from '../graph/adapter';
+import {
+  dataEffect,
+  effectGlyph,
+  emphasized,
+  semanticDescription,
+  nodeLabel,
+} from '../graph/semantics';
+import { placeLabels, type LabelViewport } from '../graph/labels';
 import { fitCamera, zoomCamera, type NetworkLayout } from '../graph/layout';
 import type { AtlasGraph, Point } from '../graph/types';
-import type { NavigationAction, NavigationState } from '../graph/navigation';
+import {
+  branchOpen,
+  type NavigationAction,
+  type NavigationState,
+} from '../graph/navigation';
 import { useAnimatedScene } from '../hooks/useAnimatedScene';
 interface Props {
   graph: AtlasGraph;
@@ -24,6 +35,7 @@ interface Props {
   dispatch: Dispatch<NavigationAction>;
   matches: string[];
   searching: boolean;
+  labelViewport?: LabelViewport;
 }
 
 export function GraphCanvas({
@@ -35,6 +47,7 @@ export function GraphCanvas({
   dispatch,
   matches,
   searching,
+  labelViewport,
 }: Props) {
   const viewport = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: number; origin: Point; camera: Point } | null>(
@@ -49,9 +62,18 @@ export function GraphCanvas({
   const poseIds = new Set(poses.keys());
   const edges = visibleEdges(graph, poseIds, state.collapsed);
   const active = hovered || state.selected;
-  const neighbors = new Set<string>(active ? [active] : []);
+  const focusPaths = useMemo(
+    () =>
+      state.accessFocus && state.selected === state.accessFocus
+        ? accessPathIds(graph, state.accessFocus)
+        : new Set<string>(),
+    [graph, state.accessFocus, state.selected],
+  );
+  const neighbors = new Set<string>(
+    focusPaths.size ? [...focusPaths, state.selected!] : active ? [active] : [],
+  );
   for (const edge of edges)
-    if (edge.from === active || edge.to === active) {
+    if (!focusPaths.size && (edge.from === active || edge.to === active)) {
       neighbors.add(edge.from);
       neighbors.add(edge.to);
     }
@@ -66,10 +88,19 @@ export function GraphCanvas({
     );
   }, [graph]);
   const priority = [
+    ...[...focusPaths].filter(
+      (id) =>
+        graph.nodes.get(id)!.accesses.length && !graph.nodes.get(id)!.canonical,
+    ),
     // Recorded children and actual neighbors get first claim on available label space.
     ...(active ? graph.nodes.get(active)!.children : []),
     ...neighbors,
     ...matches,
+    ...(state.view === 'code'
+      ? []
+      : graph.baseIds.filter((id) =>
+          emphasized(graph.nodes.get(id)!, state.view),
+        )),
     ...landmarks,
   ];
   const labels = placeLabels(
@@ -79,6 +110,7 @@ export function GraphCanvas({
     priority,
     state.camera.scale,
     active,
+    labelViewport ? { ...labelViewport, camera: state.camera } : undefined,
   );
   const size = () => ({
     width: viewport.current!.clientWidth,
@@ -222,7 +254,11 @@ export function GraphCanvas({
           {edges.map((edge) => {
             const a = poses.get(edge.from)!,
               b = poses.get(edge.to)!;
-            const linked = edge.from === active || edge.to === active;
+            const linked = focusPaths.size
+              ? (edge.kind === 'call' || edge.kind === 'unresolved') &&
+                focusPaths.has(edge.from) &&
+                focusPaths.has(edge.to)
+              : edge.from === active || edge.to === active;
             const angle = Math.atan2(b.y - a.y, b.x - a.x),
               padding = 10;
             const end = {
@@ -280,23 +316,40 @@ export function GraphCanvas({
               </button>
             );
           }
+          const effect = dataEffect(node),
+            highlighted = emphasized(node, state.view);
           const dimmed = active
             ? !neighbors.has(id)
             : searching && !matchSet.has(id);
           const label = labels.get(id);
+          const labelWidth = Math.min(nodeLabel(node).length * 6 + 6, 162);
+          const leader =
+            label &&
+            !node.canonical &&
+            node.accesses.length &&
+            Math.hypot(label.x, label.y) > 34
+              ? {
+                  x: label.x < 0 ? label.x + labelWidth : label.x,
+                  y: label.y + 8,
+                }
+              : null;
           return (
             <button
               key={id}
-              className={`graph-node ${selected ? 'is-selected' : ''} ${dimmed ? 'is-muted' : ''} ${matchSet.has(id) ? 'is-match' : ''} ${neighbors.has(id) && active !== id ? 'is-neighbor' : ''}`}
+              className={`graph-node ${selected ? 'is-selected' : ''} ${dimmed ? 'is-muted' : ''} ${matchSet.has(id) ? 'is-match' : ''} ${neighbors.has(id) && active !== id ? 'is-neighbor' : ''} ${state.view !== 'code' && !highlighted && !focusPaths.has(id) ? 'is-context' : ''}`}
               data-node-id={id}
               data-kind={node.kind}
               data-canonical={!!node.canonical}
+              data-entry={!!node.groupedRoutes?.length}
+              data-effect={effect || 'none'}
+              data-access-count={node.accesses.length}
+              data-emphasized={highlighted}
               data-world-x={positions.get(id)!.x}
               data-world-y={positions.get(id)!.y}
               data-pose-x={pose.x}
               data-pose-y={pose.y}
               data-visible={present}
-              data-expanded={state.expanded.has(id)}
+              data-expanded={branchOpen(graph, state, id)}
               style={{
                 left: pose.x,
                 top: pose.y,
@@ -304,9 +357,9 @@ export function GraphCanvas({
                 pointerEvents: present ? 'auto' : 'none',
               }}
               tabIndex={present ? 0 : -1}
-              aria-label={`Select ${node.name}${node.call ? `, call ${node.call.order}, ${node.range?.file}:${node.range?.startLine}` : `, ${node.range?.file}`}`}
+              aria-label={`Select ${node.name}${node.call ? `, call ${node.call.order}, ${node.range?.file}:${node.range?.startLine}` : `, ${node.range?.file}`}${semanticDescription(node) ? `, ${semanticDescription(node)}` : ''}`}
               aria-pressed={selected}
-              title={`${node.symbol?.qualifiedName || node.call?.qualifiedName || node.name}\n${node.subtitle}${node.children.length ? '\nDouble-click to open recorded detail' : ''}`}
+              title={`${node.symbol?.qualifiedName || node.call?.qualifiedName || node.name}\n${node.subtitle}\n${semanticDescription(node)}${node.children.length ? '\nDouble-click to open recorded detail' : ''}`}
               onMouseEnter={() => setHovered(id)}
               onMouseLeave={() => setHovered(null)}
               onFocus={() => setHovered(id)}
@@ -321,21 +374,36 @@ export function GraphCanvas({
               }}
             >
               <span className="code-glyph">
-                {node.kind === 'route' ? (
-                  <span />
-                ) : node.kind === 'gap' ? (
-                  '?'
-                ) : node.kind === 'auth' ? (
-                  'a'
-                ) : node.kind === 'data' ? (
-                  'd'
-                ) : (
-                  ''
-                )}
+                {effect
+                  ? effectGlyph(effect)
+                  : node.kind === 'route'
+                    ? '↗'
+                    : node.kind === 'gap'
+                      ? '?'
+                      : node.kind === 'auth'
+                        ? 'a'
+                        : node.kind === 'data'
+                          ? 'd'
+                          : ''}
               </span>
+              {effect && node.groupedRoutes?.length && (
+                <span className="entry-mark" aria-hidden="true">
+                  ↗
+                </span>
+              )}
               {node.children.length > 0 && (
                 <span
-                  className={`expansion-dot ${state.expanded.has(id) ? 'is-open' : ''}`}
+                  className={`expansion-dot ${branchOpen(graph, state, id) ? 'is-open' : ''}`}
+                />
+              )}
+              {leader && (
+                <span
+                  className="label-leader"
+                  aria-hidden="true"
+                  style={{
+                    width: Math.hypot(leader.x, leader.y) / state.camera.scale,
+                    transform: `rotate(${Math.atan2(leader.y, leader.x)}rad)`,
+                  }}
                 />
               )}
               {label && (
@@ -346,7 +414,7 @@ export function GraphCanvas({
                     top: 13 + label.y / state.camera.scale,
                   }}
                 >
-                  {node.name}
+                  {nodeLabel(node)}
                 </span>
               )}
             </button>

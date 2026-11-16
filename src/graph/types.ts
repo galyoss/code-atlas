@@ -121,7 +121,7 @@ export interface GraphNode {
   call?: Call;
   symbol?: SymbolDefinition;
   range?: SourceRange;
-  accesses: { route: Route; access: DataAccess }[];
+  accesses: { route: Route; access: DataAccess; occurrenceId: string }[];
   authSteps: { route: Route; step: AuthStep }[];
   evidence?: EvidenceRef;
   groupedRoutes?: Route[];

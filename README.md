@@ -34,9 +34,22 @@ ignored. This repository does not configure a frontend deployment.
 ## Explore the network
 
 - The opening canvas contains every indexed symbol and all resolved call pairs.
-  Square mint glyphs are handlers; circular blue glyphs are other symbols. Subtle
-  source regions provide context. File controls collapse/reopen their symbols in
+  Mint ↗ markers identify HTTP entry points; circular blue glyphs are other
+  functions. Subtle source regions provide context. File controls collapse/reopen their symbols in
   place, preserving real links crossing the region boundary.
+- The collapsible left rail emphasizes **Code**, **Entry points**, or **Data access**
+  on the same canvas. **Files / Functions** changes resolution at fixed anchors;
+  **Call depth 0–3** changes only the selected handler or call branch. Mixed manual
+  states are labeled. File resolution preserves saved detail, including access paths.
+- **R / W / RW** badges distinguish reads, writes and both. The 32 owner functions
+  summarize 108 route-scoped named object accesses (72 reads, 36 writes), attributed
+  only to immediate resolved parents. These are evidence records, not runtime
+  counts or unique source sites. An ambiguous target can still have a known effect.
+- Select a data-owning function, such as `_prepare_run`, and **Reveal access paths**
+  to show its exact access calls and ancestors without opening unrelated siblings.
+  Read/object labels help identify the operations; original call names, routes,
+  resolution, exact source and all evidence remain in selection and **Source**.
+  Call-level persistence effects are identified separately from named object access.
 - Select any glyph to highlight its actual neighbors. Full names appear on hover,
   selection and in **Source**. Double-click a handler/call or use **Open detail** to
   reveal its direct recorded children in the same network. Several branches can
@@ -55,8 +68,9 @@ ignored. This repository does not configure a frontend deployment.
   Selection and expansion never fit or recenter automatically. A fresh phone-sized
   view starts near a recorded handler at usable magnification; Fit shows the full graph.
 - **Back** restores the exact camera, selection, collapsed files and expanded
-  occurrences. **Source** is closeable without graph movement. Escape closes the
-  panel, clears search, or goes Back. Shift+Space on a focused glyph toggles its
+  occurrences, targeted access paths, view and rail settings. **Source** is
+  closeable without graph movement. Escape closes the panel or rail, clears
+  search, or goes Back. Shift+Space on a focused glyph toggles its
   recorded children. Reduced-motion preferences settle expansions immediately.
 - **Partial static scan** opens provenance, the original document download, route
   coverage and known gaps. A symbol's source panel includes its incoming/outgoing
@@ -95,8 +109,8 @@ never move surviving nodes. `navigation.ts` owns view snapshots, and
 
 Tests independently traverse raw JSON to verify the exact symbol, call-pair and
 reference sets. They also cover source fidelity, same-name/ID distinctions,
-unresolved-parent boundaries, multiple open branches, collapse/history, pointer
-zoom, initial framing and fixed non-overlapping glyphs. Visual acceptance uses the
+unresolved-parent data ownership, read-only and unknown-effect cases, exact targeted
+access paths, multiple open branches, collapse/history, pointer zoom, initial framing and fixed non-overlapping glyphs. Visual acceptance uses the
 actual production build; results and scope are recorded in
 [`ATLAS_NETWORK_VERIFICATION.md`](docs/ATLAS_NETWORK_VERIFICATION.md).
 

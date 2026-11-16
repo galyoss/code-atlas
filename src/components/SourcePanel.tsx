@@ -2,6 +2,13 @@ import { useEffect, useRef, type RefObject } from 'react';
 import { X } from 'lucide-react';
 import { scan } from '../data';
 import { callNodeId } from '../graph/adapter';
+import {
+  accessSummary,
+  dataEffect,
+  effectGlyph,
+  persistenceEffect,
+  effectLabel,
+} from '../graph/semantics';
 import type {
   AtlasGraph,
   AuthStep,
@@ -59,9 +66,11 @@ function AuthEvidence({ step }: { step: AuthStep }) {
 function AccessEvidence({
   access,
   route,
+  occurrence,
 }: {
   access: DataAccess;
   route: Route;
+  occurrence: GraphNode;
 }) {
   return (
     <section className="evidence-block">
@@ -73,7 +82,18 @@ function AccessEvidence({
           {route.httpMethod} {route.pathTemplate} · {access.callId}
         </p>
       }
+      <p className="source-location">{location(occurrence.range!)}</p>
       <dl>
+        <dt>Access record</dt>
+        <dd>{access.id}</dd>
+        <dt>Call resolution</dt>
+        <dd>{occurrence.call?.resolution}</dd>
+        {occurrence.evidence?.authStepId && (
+          <>
+            <dt>Auth step</dt>
+            <dd>{occurrence.evidence.authStepId}</dd>
+          </>
+        )}
         <dt>Persistence API</dt>
         <dd>{access.persistenceApi}</dd>
         <dt>Store</dt>
@@ -217,6 +237,9 @@ export function SourcePanel({
   useEffect(() => {
     panel.current?.scrollTo(0, 0);
   }, [node.id, mode]);
+  const summary = accessSummary(node),
+    effect = dataEffect(node);
+  const callEffect = persistenceEffect(node.call?.touchesPersistence);
   const checks =
     node.route?.authChain.filter(
       (step) =>
@@ -267,6 +290,32 @@ export function SourcePanel({
           {node.range && (
             <p className="source-location">{location(node.range)}</p>
           )}
+          {!!summary.total && (
+            <section className="data-summary">
+              <h3>
+                {effect && (
+                  <span className={`effect-badge ${effect}`}>
+                    {effectGlyph(effect)}
+                  </span>
+                )}
+                {node.canonical
+                  ? 'Data access in this function body'
+                  : 'Named object access'}
+              </h3>
+              <p>
+                {summary.read} read · {summary.write} write
+                {summary.unknown ? ` · ${summary.unknown} unknown` : ''}{' '}
+                {node.canonical ? 'route-scoped records' : 'records'}
+              </p>
+              {node.canonical && (
+                <p>
+                  Badges summarize the recorded accesses directly owned by this
+                  function. Repeated route slices remain separate; these are not
+                  runtime counts or unique code sites.
+                </p>
+              )}
+            </section>
+          )}
           {node.symbol && (
             <section className="evidence-block">
               <h3>Declaration</h3>
@@ -293,11 +342,26 @@ export function SourcePanel({
                 <dd>{node.call.id}</dd>
                 <dt>Resolution</dt>
                 <dd>{node.call.resolution}</dd>
+                <dt>Persistence effect</dt>
+                <dd>
+                  {callEffect
+                    ? effectLabel(callEffect)
+                    : node.call.touchesPersistence === 'none'
+                      ? 'None recorded'
+                      : 'Unknown'}
+                </dd>
                 <dt>Recorded expansion</dt>
                 <dd>{node.call.expanded}</dd>
                 <dt>Recorded order</dt>
                 <dd>{node.call.order}</dd>
               </dl>
+              {callEffect && (
+                <p className="muted-note">
+                  Persistence effect is recorded on this call. It may describe a
+                  nested operation or transaction; named object accesses are
+                  listed separately.
+                </p>
+              )}
               {node.call.argumentsExcerpt && (
                 <section className="evidence-block">
                   <h3>Invocation</h3>
@@ -430,11 +494,12 @@ export function SourcePanel({
               ))}
             </>
           )}
-          {node.accesses.map(({ route, access }) => (
+          {node.accesses.map(({ route, access, occurrenceId }) => (
             <AccessEvidence
               key={`${route.id}:${access.id}`}
               route={route}
               access={access}
+              occurrence={graph.nodes.get(occurrenceId)!}
             />
           ))}
           {!node.call?.snippet &&
