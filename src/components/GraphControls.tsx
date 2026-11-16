@@ -109,7 +109,7 @@ export function GraphControls({
         </div>
         <p className="rail-note view-description">
           {state.view === 'code'
-            ? 'All indexed functions and their recorded connections.'
+            ? 'Indexed functions and classes, with their recorded connections.'
             : state.view === 'entries'
               ? `${entries} route handlers emphasized. Select one to see its HTTP routes.`
               : `${owners} functions with named object accesses emphasized.`}
@@ -133,7 +133,7 @@ export function GraphControls({
                 dispatch({ type: 'resolution', resolution: value })
               }
             >
-              {value === 'files' ? 'Files' : 'Functions'}
+              {value === 'files' ? 'Files' : 'Symbols'}
             </button>
           ))}
         </div>
@@ -179,7 +179,7 @@ export function GraphControls({
           <i className="key-entry">↗</i>
           <span>Entry point</span>
           <i className="key-function" />
-          <span>Function</span>
+          <span>Code symbol</span>
         </div>
         <div className="key-effects">
           <span>

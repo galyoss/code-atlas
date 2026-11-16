@@ -35,10 +35,10 @@ ignored. This repository does not configure a frontend deployment.
 
 - The opening canvas contains every indexed symbol and all resolved call pairs.
   Mint ↗ markers identify HTTP entry points; circular blue glyphs are other
-  functions. Subtle source regions provide context. File controls collapse/reopen their symbols in
-  place, preserving real links crossing the region boundary.
+  code symbols (functions and classes). Subtle source regions provide context.
+  File controls collapse/reopen their symbols in place, preserving real links crossing the region boundary.
 - The collapsible left rail emphasizes **Code**, **Entry points**, or **Data access**
-  on the same canvas. **Files / Functions** changes resolution at fixed anchors;
+  on the same canvas. **Files / Symbols** changes resolution at fixed anchors;
   **Call depth 0–3** changes only the selected handler or call branch. Mixed manual
   states are labeled. File resolution preserves saved detail, including access paths.
 - **R / W / RW** badges distinguish reads, writes and both. The 32 owner functions

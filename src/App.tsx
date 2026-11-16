@@ -427,7 +427,7 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
             <i className="legend-dot handler" /> Entry
           </span>
           <span>
-            <i className="legend-dot symbol" /> Function
+            <i className="legend-dot symbol" /> Code symbol
           </span>
           <span>
             <i className="legend-line call" /> Calls

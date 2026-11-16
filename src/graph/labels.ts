@@ -51,8 +51,9 @@ export function placeLabels(
         ? (node.children.length >= 4
             ? Math.min(node.name.length * 6 + 40, 180)
             : 24) * scale
-        : 20;
-    const height = node.kind === 'group' ? 24 * scale : 20;
+        : Math.max(20, 26 * scale);
+    const height =
+      node.kind === 'group' ? 24 * scale : Math.max(20, 26 * scale);
     occupied.push({
       x: point.x * scale - width / 2,
       y: point.y * scale - height / 2,
@@ -66,30 +67,47 @@ export function placeLabels(
     graph.nodes.get(active)!.kind !== 'group'
   ) {
     const point = positions.get(active)!;
-    const width = Math.min(
-      nodeLabel(graph.nodes.get(active)!).length * 6.6 + 18,
-      420,
-    );
-    for (const offset of [
+    // Round outward around the bundled mono font's actual 28.5px active text box.
+    const width =
+      Math.ceil(
+        Math.min(nodeLabel(graph.nodes.get(active)!).length * 6.6 + 18, 420),
+      ) + 2;
+    const options = [
       { x: 14, y: -14 },
       { x: -width - 14, y: -14 },
       { x: -width / 2, y: -42 },
       { x: -width / 2, y: 18 },
-    ]) {
+    ];
+    for (const distance of [38, 62, 86, 110, 146, 182, 218])
+      options.push(
+        { x: distance, y: -15 },
+        { x: -width - distance, y: -15 },
+        { x: -width / 2, y: -distance - 30 },
+        { x: -width / 2, y: distance },
+        { x: distance, y: -distance - 30 },
+        { x: -width - distance, y: distance },
+      );
+    for (const offset of options) {
       const rect = {
         x: point.x * scale + offset.x,
         y: point.y * scale + offset.y,
         width,
-        height: 28,
+        height: 30,
       };
-      if (!allowed(rect)) continue;
+      if (!allowed(rect) || occupied.some((other) => overlaps(rect, other)))
+        continue;
       placed.set(active, offset);
       occupied.push(rect);
       break;
     }
   }
   for (const id of priority) {
-    if (placed.size >= (active ? 36 : 23) || placed.has(id) || !visible.has(id))
+    if (
+      id === active ||
+      placed.size >= (active ? 36 : 23) ||
+      placed.has(id) ||
+      !visible.has(id)
+    )
       continue;
     const node = graph.nodes.get(id)!;
     if (node.kind === 'group') continue;

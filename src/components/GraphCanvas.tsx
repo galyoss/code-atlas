@@ -322,15 +322,16 @@ export function GraphCanvas({
             ? !neighbors.has(id)
             : searching && !matchSet.has(id);
           const label = labels.get(id);
-          const labelWidth = Math.min(nodeLabel(node).length * 6 + 6, 162);
+          const activeLabel = id === active;
+          const labelWidth = activeLabel
+            ? Math.ceil(Math.min(nodeLabel(node).length * 6.6 + 18, 420)) + 2
+            : Math.min(nodeLabel(node).length * 6 + 6, 162);
+          const labelHeight = activeLabel ? 30 : 16;
           const leader =
-            label &&
-            !node.canonical &&
-            node.accesses.length &&
-            Math.hypot(label.x, label.y) > 34
+            label && (activeLabel || (!node.canonical && node.accesses.length))
               ? {
-                  x: label.x < 0 ? label.x + labelWidth : label.x,
-                  y: label.y + 8,
+                  x: Math.max(label.x, Math.min(0, label.x + labelWidth)),
+                  y: Math.max(label.y, Math.min(0, label.y + labelHeight)),
                 }
               : null;
           return (
@@ -408,7 +409,7 @@ export function GraphCanvas({
               )}
               {label && (
                 <span
-                  className={`node-name ${selected || hovered === id ? 'is-active' : ''}`}
+                  className={`node-name ${activeLabel ? 'is-active' : ''}`}
                   style={{
                     left: 13 + label.x / state.camera.scale,
                     top: 13 + label.y / state.camera.scale,
