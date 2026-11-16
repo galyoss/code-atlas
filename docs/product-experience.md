@@ -2,9 +2,9 @@
 
 ## Product promise
 
-Give someone a repository, an interactive map of its code, and a clear way to investigate its security findings—all within an experience they can understand and use without learning the tool's internals.
+Give a developer reliable security findings for the repository they submit. Scan quality is the first priority. Report real vulnerabilities with as few false alarms and missed issues as possible.
 
-CodeAtlas should feel polished, distinctive, and visually compelling. The graph is the product's centerpiece: a useful working surface that makes complex code easier to explore, rather than decoration around a conventional findings dashboard.
+Present the scan results in a polished, visually compelling interactive graph. Developers can explore how the code works, see where findings occur, and follow the evidence to the relevant source.
 
 ## From a repository link to a running scan
 
@@ -28,6 +28,10 @@ The graph should occupy most of the workspace. Keep the surrounding interface re
 
 When the repository is too large to show legibly at once, start with a useful view and clearly identify its scope. Let the user move between repository context, files, and symbols without losing their place. A focused view must not silently imply that it represents the entire repository.
 
+Give users control over how much detail the graph shows. At low detail, show where requests and data enter, which areas of business logic they pass through, and where data is read or written. As users increase the detail, reveal individual entry points, methods, calls, and data operations while keeping the flow they're following in view.
+
+Use the [per-route code graph schema](code-graph-schema.md) to let users trace an HTTP request through its handler, authentication and authorization checks, and calls that read or write data. Link each step to its source and show where the scan left part of the path unresolved.
+
 ## Explore the code visually
 
 The experience should support:
@@ -47,7 +51,7 @@ Details should appear on demand. Prefer one contextual panel at a time, with a c
 
 The findings list and the graph should be two connected ways to explore the same analysis.
 
-The list should make it easy to search, filter, and prioritize issues by severity, review status, and location. Selecting a finding should reveal its explanation and highlight the relevant nodes and path on the graph. Selecting a graph node should expose related findings when they exist.
+Mark findings on the code graph so users can spot affected flows while exploring the repository. The list should make it easy to search, filter, and prioritize issues by severity, review status, and location. Selecting a finding should reveal its explanation and highlight the relevant nodes and path on the graph. Selecting a graph node should expose related findings when they exist.
 
 A finding should make the following understandable:
 
@@ -76,6 +80,7 @@ The experience is successful when a user can:
 
 - Start a scan from a GitHub link, model choice, and configuration through a clear click-to-run flow.
 - Open the result and see a meaningful graph immediately.
+- Follow a flow from the repository overview down to individual methods, calls, and source locations.
 - Select a file or node and understand its connections and source context.
 - Move from a finding in the list to its highlighted path and inspect the supporting code.
 - Recognize incomplete coverage, unresolved relationships, and uncertain findings.
