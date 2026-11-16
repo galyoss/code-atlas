@@ -425,12 +425,19 @@ button svg {
   margin: 0 3px;
 }
 .canvas-hint {
+  background: #0d1419ed;
+  padding: 5px 7px;
+  border-radius: 4px;
   position: absolute;
   left: 30px;
   bottom: 35px;
   font-size: 10px;
   color: #7d969f;
   pointer-events: none;
+}
+.canvas-hint.is-offscreen {
+  top: 16px;
+  bottom: auto;
 }
 .canvas-hint span {
   padding: 0 5px;

@@ -44,11 +44,17 @@ export function initialCamera(
   width: number,
   height: number,
 ): Camera {
-  if (width < 700) {
-    const selected = positions.get(graph.defaultId)!;
-    return { scale: 0.95, x: 32 - selected.x * 0.95, y: height * 0.42 - selected.y * 0.95 };
-  }
-  return fitCamera(positions, new Set(graph.baseIds), width, height);
+  const overview = fitCamera(positions, new Set(graph.baseIds), width, height);
+  const readableScale = 0.95;
+  if (overview.scale >= readableScale) return overview;
+
+  // Keep the selected route readable when either canvas dimension constrains the overview.
+  const selected = positions.get(graph.defaultId)!;
+  return {
+    scale: readableScale,
+    x: Math.min(80, width * 0.08) - selected.x * readableScale,
+    y: height * 0.42 - selected.y * readableScale,
+  };
 }
 
 export function fitCamera(

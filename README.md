@@ -32,6 +32,9 @@ contents of `dist/`; this repository does not configure a deployment.
 
 ## Explore
 
+The initial view keeps labels readable. When the full overview would be too small,
+it starts around the selected route; the canvas indicates when nodes are offscreen.
+
 - Click a node to select it. Its **+** button or **Open calls** reveals only direct
   recorded calls. One deeper branch stays open, with ancestors and context retained.
 - Drag the canvas to pan. Focus the canvas and use arrow keys to pan by keyboard.

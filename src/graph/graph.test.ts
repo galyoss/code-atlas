@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { datasets } from '../data';
 import { adaptGraph, callNodeId, routeNodeId, visibleIds } from './adapter';
-import { layoutGraph, zoomCamera } from './layout';
+import { fitCamera, initialCamera, layoutGraph, NODE_HEIGHT, NODE_WIDTH, zoomCamera } from './layout';
 import { initialNavigation, navigate } from './navigation';
 
 const graph = datasets.aegra;
@@ -136,5 +136,41 @@ describe('local exploration and exact navigation history', () => {
     expect(next.path).toBe(state.path);
     expect(next.selected).toBe(state.selected);
     expect(next.history).toBe(state.history);
+  });
+});
+
+describe('initial framing readability', () => {
+  it('keeps the starting route readable and onscreen across width boundaries and short canvases', () => {
+    const viewports = [
+      [390, 600],
+      [699, 600],
+      [700, 600],
+      [800, 600],
+      [900, 600],
+      [1280, 400],
+      [1280, 300],
+    ];
+    for (const dataset of Object.values(datasets)) {
+      const positions = layoutGraph(dataset);
+      const selected = positions.get(dataset.defaultId)!;
+      for (const [width, height] of viewports) {
+        const camera = initialCamera(positions, dataset, width, height);
+        // Match the readable narrow entry view, not an arbitrary whole-graph fit.
+        expect(camera.scale, `${dataset.document.repo.name} at ${width}×${height}`).toBeGreaterThanOrEqual(
+          0.95,
+        );
+        const left = selected.x * camera.scale + camera.x;
+        const top = selected.y * camera.scale + camera.y;
+        expect(left).toBeGreaterThanOrEqual(0);
+        expect(top).toBeGreaterThanOrEqual(0);
+        expect(left + NODE_WIDTH * camera.scale).toBeLessThanOrEqual(width);
+        expect(top + NODE_HEIGHT * camera.scale).toBeLessThanOrEqual(height);
+      }
+      // Roomy canvases still show the full overview; explicit Fit remains available at any size.
+      expect(initialCamera(positions, dataset, 1920, 900)).toEqual(
+        fitCamera(positions, new Set(dataset.baseIds), 1920, 900),
+      );
+      expect(fitCamera(positions, new Set(dataset.baseIds), 800, 600).scale).toBeLessThan(0.95);
+    }
   });
 });

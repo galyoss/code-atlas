@@ -26,14 +26,33 @@ export function GraphCanvas({ graph, positions, visible, state, dispatch, onTogg
   const viewport = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: number; origin: Point; camera: Point } | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const { poses, transitioning } = useAnimatedScene(graph, positions, visible, state.path, state.selected);
   useLayoutEffect(() => {
     const element = viewport.current!;
+    const measure = () => setViewportSize({ width: element.clientWidth, height: element.clientHeight });
+    measure();
     dispatch({
       type: 'camera',
       camera: initialCamera(positions, graph, element.clientWidth, element.clientHeight),
     });
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
   }, [graph, positions, dispatch]);
+  const hasOffscreenNodes =
+    viewportSize.width > 0 &&
+    [...visible].some((id) => {
+      const position = positions.get(id)!;
+      const left = position.x * state.camera.scale + state.camera.x;
+      const top = position.y * state.camera.scale + state.camera.y;
+      return (
+        left < 0 ||
+        top < 0 ||
+        left + NODE_WIDTH * state.camera.scale > viewportSize.width ||
+        top + NODE_HEIGHT * state.camera.scale > viewportSize.height
+      );
+    });
   const size = () => ({ width: viewport.current!.clientWidth, height: viewport.current!.clientHeight });
   const zoom = (factor: number) => {
     const { width, height } = size();
@@ -209,8 +228,16 @@ export function GraphCanvas({ graph, positions, visible, state, dispatch, onTogg
           })}
         </div>
       </div>
-      <span className="canvas-hint">
-        Drag to explore <span>·</span> zoom keeps the same detail
+      <span className={`canvas-hint${hasOffscreenNodes ? ' is-offscreen' : ''}`}>
+        {hasOffscreenNodes ? (
+          <>
+            Some nodes are offscreen <span>·</span> drag to explore
+          </>
+        ) : (
+          <>
+            Drag to explore <span>·</span> zoom keeps the same detail
+          </>
+        )}
       </span>
       <div className="camera-controls" aria-label="Graph camera controls">
         <button
