@@ -112,7 +112,8 @@ reference sets. They also cover source fidelity, same-name/ID distinctions,
 unresolved-parent data ownership, read-only and unknown-effect cases, exact targeted
 access paths, multiple open branches, collapse/history, pointer zoom, initial framing and fixed non-overlapping glyphs. Visual acceptance uses the
 actual production build; results and scope are recorded in
-[`ATLAS_NETWORK_VERIFICATION.md`](docs/ATLAS_NETWORK_VERIFICATION.md).
+[`ATLAS_NETWORK_VERIFICATION.md`](docs/ATLAS_NETWORK_VERIFICATION.md) and the
+[controls/data verification](docs/ATLAS_CONTROLS_VERIFICATION.md).
 
 # Scanner
 
