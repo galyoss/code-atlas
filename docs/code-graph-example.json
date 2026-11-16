@@ -1,0 +1,895 @@
+{
+  "schemaVersion": "1.0.0",
+  "illustrative": true,
+  "note": "Synthetic illustrative document for schema 1.0.0. Not a scan and not a finding. POST /threads/{thread_id}/runs authenticates the caller, then loads Thread by id with no owner predicate. GET /threads/{thread_id} uses the same authentication and also filters Thread.owner_id by that caller.",
+  "generator": {
+    "name": "hand-authored-example",
+    "version": "1.0.0"
+  },
+  "repo": {
+    "name": "papertrail-api",
+    "revision": "illustrative",
+    "vcs": "none"
+  },
+  "languages": ["python"],
+  "frameworks": ["fastapi"],
+  "generatedAt": "2026-11-16T08:40:00Z",
+  "unresolvedGaps": [
+    {
+      "id": "gap_graphql",
+      "kind": "graphql",
+      "support": "unsupported",
+      "detail": "This generator does not slice GraphQL operations or resolvers. An HTTP handler that serves GraphQL may appear as a route; the resolvers behind it do not enter its call graph."
+    },
+    {
+      "id": "gap_websocket",
+      "kind": "websocket",
+      "support": "unsupported",
+      "detail": "This generator does not slice WebSocket handlers. None are represented in routes."
+    },
+    {
+      "id": "gap_dynamic_dispatch",
+      "kind": "dynamic_dispatch",
+      "support": "partial",
+      "detail": "Computed call targets are recorded with resolution ambiguous and are not inlined. This illustrative document contains no such call."
+    }
+  ],
+  "symbolIndex": [
+    {
+      "id": "sym_user",
+      "language": "python",
+      "kind": "class",
+      "name": "User",
+      "qualifiedName": "app.auth.deps.User",
+      "signature": "class User(BaseModel): id: str",
+      "range": {
+        "file": "app/auth/deps.py",
+        "startLine": 10,
+        "endLine": 11
+      }
+    },
+    {
+      "id": "sym_decode_user",
+      "language": "python",
+      "kind": "function",
+      "name": "decode_user",
+      "qualifiedName": "app.auth.deps.decode_user",
+      "signature": "def decode_user(token: str) -> User",
+      "range": {
+        "file": "app/auth/deps.py",
+        "startLine": 13,
+        "endLine": 15
+      }
+    },
+    {
+      "id": "sym_get_current_user",
+      "language": "python",
+      "kind": "function",
+      "name": "get_current_user",
+      "qualifiedName": "app.auth.deps.get_current_user",
+      "signature": "def get_current_user(authorization: Annotated[str | None, Header()] = None) -> User",
+      "range": {
+        "file": "app/auth/deps.py",
+        "startLine": 17,
+        "endLine": 20
+      }
+    },
+    {
+      "id": "sym_thread",
+      "language": "python",
+      "kind": "class",
+      "name": "Thread",
+      "qualifiedName": "app.models.thread.Thread",
+      "signature": "class Thread(Base): id: Mapped[str]; owner_id: Mapped[str]",
+      "range": {
+        "file": "app/models/thread.py",
+        "startLine": 8,
+        "endLine": 11
+      }
+    },
+    {
+      "id": "sym_run",
+      "language": "python",
+      "kind": "class",
+      "name": "Run",
+      "qualifiedName": "app.models.run.Run",
+      "signature": "class Run(Base): id: Mapped[str]; thread_id: Mapped[str]; prompt: Mapped[str]",
+      "range": {
+        "file": "app/models/run.py",
+        "startLine": 8,
+        "endLine": 12
+      }
+    },
+    {
+      "id": "sym_run_create",
+      "language": "python",
+      "kind": "class",
+      "name": "RunCreate",
+      "qualifiedName": "app.schemas.run_create.RunCreate",
+      "signature": "class RunCreate(BaseModel): prompt: str",
+      "range": {
+        "file": "app/schemas/run_create.py",
+        "startLine": 4,
+        "endLine": 5
+      }
+    },
+    {
+      "id": "sym_fetch_thread",
+      "language": "python",
+      "kind": "function",
+      "name": "fetch_thread",
+      "qualifiedName": "app.api.runs.fetch_thread",
+      "signature": "def fetch_thread(db: Session, thread_id: str) -> Thread",
+      "range": {
+        "file": "app/api/runs.py",
+        "startLine": 14,
+        "endLine": 15
+      }
+    },
+    {
+      "id": "sym_create_run",
+      "language": "python",
+      "kind": "function",
+      "name": "create_run",
+      "qualifiedName": "app.api.runs.create_run",
+      "signature": "def create_run(thread_id: str, body: RunCreate, user: User = Depends(get_current_user)) -> Run",
+      "range": {
+        "file": "app/api/runs.py",
+        "startLine": 18,
+        "endLine": 23
+      }
+    },
+    {
+      "id": "sym_get_thread",
+      "language": "python",
+      "kind": "function",
+      "name": "get_thread",
+      "qualifiedName": "app.api.threads.get_thread",
+      "signature": "def get_thread(thread_id: str, user: User = Depends(get_current_user)) -> Thread",
+      "range": {
+        "file": "app/api/threads.py",
+        "startLine": 13,
+        "endLine": 14
+      }
+    }
+  ],
+  "routes": [
+    {
+      "id": "route_post_thread_runs",
+      "language": "python",
+      "framework": "fastapi",
+      "httpMethod": "POST",
+      "pathTemplate": "/threads/{thread_id}/runs",
+      "registration": {
+        "mechanism": "decorator",
+        "range": {
+          "file": "app/api/runs.py",
+          "startLine": 17,
+          "endLine": 17
+        },
+        "snippet": {
+          "text": "@router.post(\"/threads/{thread_id}/runs\")",
+          "truncated": false,
+          "range": {
+            "file": "app/api/runs.py",
+            "startLine": 17,
+            "endLine": 17
+          }
+        }
+      },
+      "handler": {
+        "symbolId": "sym_create_run",
+        "qualifiedName": "app.api.runs.create_run",
+        "range": {
+          "file": "app/api/runs.py",
+          "startLine": 18,
+          "endLine": 23
+        }
+      },
+      "entryParams": [
+        {
+          "id": "param_create_thread_id",
+          "name": "thread_id",
+          "location": "path",
+          "pathInRequest": "path.thread_id",
+          "presence": "required",
+          "valueShape": "scalar",
+          "namesObject": "yes",
+          "reads": [
+            {
+              "range": {
+                "file": "app/api/runs.py",
+                "startLine": 18,
+                "endLine": 18
+              },
+              "symbolId": "sym_create_run",
+              "expression": "thread_id"
+            },
+            {
+              "range": {
+                "file": "app/api/runs.py",
+                "startLine": 19,
+                "endLine": 19
+              },
+              "symbolId": "sym_create_run",
+              "expression": "thread_id"
+            },
+            {
+              "range": {
+                "file": "app/api/runs.py",
+                "startLine": 15,
+                "endLine": 15
+              },
+              "symbolId": "sym_fetch_thread",
+              "expression": "thread_id"
+            }
+          ]
+        },
+        {
+          "id": "param_create_body",
+          "name": "body",
+          "location": "body",
+          "pathInRequest": "body",
+          "presence": "required",
+          "valueShape": "object",
+          "namesObject": "no",
+          "typeSymbolId": "sym_run_create",
+          "reads": [
+            {
+              "range": {
+                "file": "app/api/runs.py",
+                "startLine": 18,
+                "endLine": 18
+              },
+              "symbolId": "sym_create_run",
+              "expression": "body"
+            }
+          ]
+        },
+        {
+          "id": "param_create_prompt",
+          "name": "prompt",
+          "location": "body",
+          "pathInRequest": "body.prompt",
+          "presence": "required",
+          "valueShape": "scalar",
+          "namesObject": "no",
+          "reads": [
+            {
+              "range": {
+                "file": "app/api/runs.py",
+                "startLine": 20,
+                "endLine": 20
+              },
+              "symbolId": "sym_create_run",
+              "expression": "body.prompt"
+            }
+          ]
+        },
+        {
+          "id": "param_create_authorization",
+          "name": "authorization",
+          "location": "header",
+          "pathInRequest": "header.authorization",
+          "presence": "optional",
+          "valueShape": "scalar",
+          "namesObject": "no",
+          "reads": [
+            {
+              "range": {
+                "file": "app/auth/deps.py",
+                "startLine": 17,
+                "endLine": 17
+              },
+              "symbolId": "sym_get_current_user",
+              "expression": "authorization"
+            },
+            {
+              "range": {
+                "file": "app/auth/deps.py",
+                "startLine": 18,
+                "endLine": 18
+              },
+              "symbolId": "sym_get_current_user",
+              "expression": "authorization"
+            }
+          ]
+        }
+      ],
+      "identityBindings": [
+        {
+          "id": "bind_create_user",
+          "name": "user",
+          "kind": "user",
+          "presence": "required",
+          "expression": "user: User = Depends(get_current_user)",
+          "producedByAuthStepId": "auth_create_user",
+          "typeSymbolId": "sym_user",
+          "range": {
+            "file": "app/api/runs.py",
+            "startLine": 18,
+            "endLine": 18
+          }
+        }
+      ],
+      "authChain": [
+        {
+          "id": "auth_create_user",
+          "symbolId": "sym_get_current_user",
+          "qualifiedName": "app.auth.deps.get_current_user",
+          "range": {
+            "file": "app/auth/deps.py",
+            "startLine": 17,
+            "endLine": 20
+          },
+          "kind": "authentication",
+          "mechanism": "dependency",
+          "scope": "route",
+          "applicability": "always",
+          "onFailure": "abort",
+          "bindsObjectToCaller": "no",
+          "expanded": "yes",
+          "calls": [
+            {
+              "id": "call_decode_user",
+              "order": 1,
+              "depth": 1,
+              "calleeName": "decode_user",
+              "qualifiedName": "app.auth.deps.decode_user",
+              "resolution": "resolved",
+              "symbolId": "sym_decode_user",
+              "touchesPersistence": "none",
+              "expanded": "yes",
+              "callSite": {
+                "file": "app/auth/deps.py",
+                "startLine": 20,
+                "endLine": 20
+              },
+              "argumentsExcerpt": "decode_user(authorization.removeprefix(\"Bearer \").strip())",
+              "snippet": {
+                "text": "def decode_user(token: str) -> User:\n    payload = jwt.decode(token)\n    return User(id=str(payload[\"sub\"]))",
+                "truncated": false,
+                "range": {
+                  "file": "app/auth/deps.py",
+                  "startLine": 13,
+                  "endLine": 15
+                }
+              },
+              "children": [
+                {
+                  "id": "call_jwt_decode",
+                  "order": 2,
+                  "depth": 2,
+                  "calleeName": "decode",
+                  "qualifiedName": "jwt.decode",
+                  "resolution": "external",
+                  "touchesPersistence": "none",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "app/auth/deps.py",
+                    "startLine": 14,
+                    "endLine": 14
+                  },
+                  "argumentsExcerpt": "jwt.decode(token)",
+                  "children": []
+                },
+                {
+                  "id": "call_user_init",
+                  "order": 3,
+                  "depth": 2,
+                  "calleeName": "User",
+                  "qualifiedName": "app.auth.deps.User",
+                  "resolution": "resolved",
+                  "symbolId": "sym_user",
+                  "touchesPersistence": "none",
+                  "expanded": "yes",
+                  "callSite": {
+                    "file": "app/auth/deps.py",
+                    "startLine": 15,
+                    "endLine": 15
+                  },
+                  "argumentsExcerpt": "User(id=str(payload[\"sub\"]))",
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "snippet": {
+            "text": "def get_current_user(authorization: Annotated[str | None, Header()] = None) -> User:\n    if authorization is None or not authorization.startswith(\"Bearer \"):\n        raise HTTPException(status_code=401, detail=\"unauthorized\")\n    return decode_user(authorization.removeprefix(\"Bearer \").strip())",
+            "truncated": false,
+            "range": {
+              "file": "app/auth/deps.py",
+              "startLine": 17,
+              "endLine": 20
+            }
+          }
+        }
+      ],
+      "callGraph": [
+        {
+          "id": "call_fetch_thread",
+          "order": 4,
+          "depth": 1,
+          "calleeName": "fetch_thread",
+          "qualifiedName": "app.api.runs.fetch_thread",
+          "resolution": "resolved",
+          "symbolId": "sym_fetch_thread",
+          "touchesPersistence": "read",
+          "expanded": "yes",
+          "callSite": {
+            "file": "app/api/runs.py",
+            "startLine": 19,
+            "endLine": 19
+          },
+          "argumentsExcerpt": "fetch_thread(db, thread_id)",
+          "children": [
+            {
+              "id": "call_query_thread",
+              "order": 5,
+              "depth": 2,
+              "calleeName": "query",
+              "qualifiedName": "sqlalchemy.orm.Session.query",
+              "resolution": "external",
+              "touchesPersistence": "read",
+              "expanded": "no",
+              "callSite": {
+                "file": "app/api/runs.py",
+                "startLine": 15,
+                "endLine": 15
+              },
+              "argumentsExcerpt": "db.query(Thread).filter(Thread.id == thread_id).one()",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "call_run_init",
+          "order": 6,
+          "depth": 1,
+          "calleeName": "Run",
+          "qualifiedName": "app.models.run.Run",
+          "resolution": "resolved",
+          "symbolId": "sym_run",
+          "touchesPersistence": "none",
+          "expanded": "yes",
+          "callSite": {
+            "file": "app/api/runs.py",
+            "startLine": 20,
+            "endLine": 20
+          },
+          "argumentsExcerpt": "Run(thread_id=thread.id, prompt=body.prompt)",
+          "children": []
+        },
+        {
+          "id": "call_add_run",
+          "order": 7,
+          "depth": 1,
+          "calleeName": "add",
+          "qualifiedName": "sqlalchemy.orm.Session.add",
+          "resolution": "external",
+          "touchesPersistence": "write",
+          "expanded": "no",
+          "callSite": {
+            "file": "app/api/runs.py",
+            "startLine": 21,
+            "endLine": 21
+          },
+          "argumentsExcerpt": "db.add(run)",
+          "children": []
+        },
+        {
+          "id": "call_commit",
+          "order": 8,
+          "depth": 1,
+          "calleeName": "commit",
+          "qualifiedName": "sqlalchemy.orm.Session.commit",
+          "resolution": "external",
+          "touchesPersistence": "write",
+          "expanded": "no",
+          "callSite": {
+            "file": "app/api/runs.py",
+            "startLine": 22,
+            "endLine": 22
+          },
+          "argumentsExcerpt": "db.commit()",
+          "children": []
+        }
+      ],
+      "dataAccesses": [
+        {
+          "id": "da_load_thread",
+          "callId": "call_query_thread",
+          "operation": "load",
+          "persistenceApi": "orm",
+          "object": {
+            "name": "Thread",
+            "symbolId": "sym_thread",
+            "store": "threads"
+          },
+          "paramFlows": [
+            {
+              "entryParamId": "param_create_thread_id",
+              "field": "Thread.id",
+              "confidence": "exact"
+            }
+          ],
+          "ownershipEvidence": {
+            "inPredicate": "no",
+            "stampedOnWrite": "not_applicable",
+            "ownerFields": [],
+            "identityBindingIds": []
+          },
+          "writtenFields": [],
+          "snippet": {
+            "text": "return db.query(Thread).filter(Thread.id == thread_id).one()",
+            "truncated": false,
+            "range": {
+              "file": "app/api/runs.py",
+              "startLine": 15,
+              "endLine": 15
+            }
+          }
+        },
+        {
+          "id": "da_create_run",
+          "callId": "call_add_run",
+          "operation": "create",
+          "persistenceApi": "orm",
+          "object": {
+            "name": "Run",
+            "symbolId": "sym_run",
+            "store": "runs"
+          },
+          "paramFlows": [
+            {
+              "entryParamId": "param_create_thread_id",
+              "field": "Run.thread_id",
+              "confidence": "probable"
+            },
+            {
+              "entryParamId": "param_create_prompt",
+              "field": "Run.prompt",
+              "confidence": "exact"
+            }
+          ],
+          "ownershipEvidence": {
+            "inPredicate": "not_applicable",
+            "stampedOnWrite": "no",
+            "ownerFields": [],
+            "identityBindingIds": []
+          },
+          "writtenFields": [
+            {
+              "field": "thread_id",
+              "source": "loaded_object",
+              "sourceDataAccessId": "da_load_thread"
+            },
+            {
+              "field": "prompt",
+              "source": "request_param",
+              "entryParamId": "param_create_prompt"
+            }
+          ],
+          "snippet": {
+            "text": "run = Run(thread_id=thread.id, prompt=body.prompt)\ndb.add(run)",
+            "truncated": false,
+            "range": {
+              "file": "app/api/runs.py",
+              "startLine": 20,
+              "endLine": 21
+            }
+          }
+        }
+      ],
+      "relatedRoutes": [
+        {
+          "routeId": "route_get_thread",
+          "relations": ["same_model", "same_path_prefix", "shared_auth_symbol"],
+          "sharedSymbolIds": ["sym_thread", "sym_get_current_user"]
+        }
+      ],
+      "budget": {
+        "limits": {
+          "maxCallDepth": 6,
+          "maxCallNodes": 40,
+          "maxSnippetChars": 480
+        },
+        "counts": {
+          "authSteps": 1,
+          "callNodes": 8,
+          "dataAccesses": 2,
+          "snippets": 5
+        },
+        "coverage": {
+          "authChain": "complete",
+          "callGraph": "complete",
+          "dataFlow": "complete"
+        },
+        "omitted": []
+      }
+    },
+    {
+      "id": "route_get_thread",
+      "language": "python",
+      "framework": "fastapi",
+      "httpMethod": "GET",
+      "pathTemplate": "/threads/{thread_id}",
+      "registration": {
+        "mechanism": "decorator",
+        "range": {
+          "file": "app/api/threads.py",
+          "startLine": 12,
+          "endLine": 12
+        },
+        "snippet": {
+          "text": "@router.get(\"/threads/{thread_id}\")",
+          "truncated": false,
+          "range": {
+            "file": "app/api/threads.py",
+            "startLine": 12,
+            "endLine": 12
+          }
+        }
+      },
+      "handler": {
+        "symbolId": "sym_get_thread",
+        "qualifiedName": "app.api.threads.get_thread",
+        "range": {
+          "file": "app/api/threads.py",
+          "startLine": 13,
+          "endLine": 14
+        }
+      },
+      "entryParams": [
+        {
+          "id": "param_get_thread_id",
+          "name": "thread_id",
+          "location": "path",
+          "pathInRequest": "path.thread_id",
+          "presence": "required",
+          "valueShape": "scalar",
+          "namesObject": "yes",
+          "reads": [
+            {
+              "range": {
+                "file": "app/api/threads.py",
+                "startLine": 13,
+                "endLine": 13
+              },
+              "symbolId": "sym_get_thread",
+              "expression": "thread_id"
+            },
+            {
+              "range": {
+                "file": "app/api/threads.py",
+                "startLine": 14,
+                "endLine": 14
+              },
+              "symbolId": "sym_get_thread",
+              "expression": "thread_id"
+            }
+          ]
+        },
+        {
+          "id": "param_get_authorization",
+          "name": "authorization",
+          "location": "header",
+          "pathInRequest": "header.authorization",
+          "presence": "optional",
+          "valueShape": "scalar",
+          "namesObject": "no",
+          "reads": [
+            {
+              "range": {
+                "file": "app/auth/deps.py",
+                "startLine": 17,
+                "endLine": 17
+              },
+              "symbolId": "sym_get_current_user",
+              "expression": "authorization"
+            },
+            {
+              "range": {
+                "file": "app/auth/deps.py",
+                "startLine": 18,
+                "endLine": 18
+              },
+              "symbolId": "sym_get_current_user",
+              "expression": "authorization"
+            }
+          ]
+        }
+      ],
+      "identityBindings": [
+        {
+          "id": "bind_get_user",
+          "name": "user",
+          "kind": "user",
+          "presence": "required",
+          "expression": "user: User = Depends(get_current_user)",
+          "producedByAuthStepId": "auth_get_user",
+          "typeSymbolId": "sym_user",
+          "range": {
+            "file": "app/api/threads.py",
+            "startLine": 13,
+            "endLine": 13
+          }
+        }
+      ],
+      "authChain": [
+        {
+          "id": "auth_get_user",
+          "symbolId": "sym_get_current_user",
+          "qualifiedName": "app.auth.deps.get_current_user",
+          "range": {
+            "file": "app/auth/deps.py",
+            "startLine": 17,
+            "endLine": 20
+          },
+          "kind": "authentication",
+          "mechanism": "dependency",
+          "scope": "route",
+          "applicability": "always",
+          "onFailure": "abort",
+          "bindsObjectToCaller": "no",
+          "expanded": "yes",
+          "calls": [
+            {
+              "id": "call_get_decode_user",
+              "order": 1,
+              "depth": 1,
+              "calleeName": "decode_user",
+              "qualifiedName": "app.auth.deps.decode_user",
+              "resolution": "resolved",
+              "symbolId": "sym_decode_user",
+              "touchesPersistence": "none",
+              "expanded": "yes",
+              "callSite": {
+                "file": "app/auth/deps.py",
+                "startLine": 20,
+                "endLine": 20
+              },
+              "argumentsExcerpt": "decode_user(authorization.removeprefix(\"Bearer \").strip())",
+              "snippet": {
+                "text": "def decode_user(token: str) -> User:\n    payload = jwt.decode(token)\n    return User(id=str(payload[\"sub\"]))",
+                "truncated": false,
+                "range": {
+                  "file": "app/auth/deps.py",
+                  "startLine": 13,
+                  "endLine": 15
+                }
+              },
+              "children": [
+                {
+                  "id": "call_get_jwt_decode",
+                  "order": 2,
+                  "depth": 2,
+                  "calleeName": "decode",
+                  "qualifiedName": "jwt.decode",
+                  "resolution": "external",
+                  "touchesPersistence": "none",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "app/auth/deps.py",
+                    "startLine": 14,
+                    "endLine": 14
+                  },
+                  "argumentsExcerpt": "jwt.decode(token)",
+                  "children": []
+                },
+                {
+                  "id": "call_get_user_init",
+                  "order": 3,
+                  "depth": 2,
+                  "calleeName": "User",
+                  "qualifiedName": "app.auth.deps.User",
+                  "resolution": "resolved",
+                  "symbolId": "sym_user",
+                  "touchesPersistence": "none",
+                  "expanded": "yes",
+                  "callSite": {
+                    "file": "app/auth/deps.py",
+                    "startLine": 15,
+                    "endLine": 15
+                  },
+                  "argumentsExcerpt": "User(id=str(payload[\"sub\"]))",
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "snippet": {
+            "text": "def get_current_user(authorization: Annotated[str | None, Header()] = None) -> User:\n    if authorization is None or not authorization.startswith(\"Bearer \"):\n        raise HTTPException(status_code=401, detail=\"unauthorized\")\n    return decode_user(authorization.removeprefix(\"Bearer \").strip())",
+            "truncated": false,
+            "range": {
+              "file": "app/auth/deps.py",
+              "startLine": 17,
+              "endLine": 20
+            }
+          }
+        }
+      ],
+      "callGraph": [
+        {
+          "id": "call_get_query",
+          "order": 4,
+          "depth": 1,
+          "calleeName": "query",
+          "qualifiedName": "sqlalchemy.orm.Session.query",
+          "resolution": "external",
+          "touchesPersistence": "read",
+          "expanded": "no",
+          "callSite": {
+            "file": "app/api/threads.py",
+            "startLine": 14,
+            "endLine": 14
+          },
+          "argumentsExcerpt": "db.query(Thread).filter(Thread.id == thread_id, Thread.owner_id == user.id).one()",
+          "children": []
+        }
+      ],
+      "dataAccesses": [
+        {
+          "id": "da_get_thread",
+          "callId": "call_get_query",
+          "operation": "load",
+          "persistenceApi": "orm",
+          "object": {
+            "name": "Thread",
+            "symbolId": "sym_thread",
+            "store": "threads"
+          },
+          "paramFlows": [
+            {
+              "entryParamId": "param_get_thread_id",
+              "field": "Thread.id",
+              "confidence": "exact"
+            }
+          ],
+          "ownershipEvidence": {
+            "inPredicate": "yes",
+            "stampedOnWrite": "not_applicable",
+            "ownerFields": ["Thread.owner_id"],
+            "identityBindingIds": ["bind_get_user"]
+          },
+          "writtenFields": [],
+          "snippet": {
+            "text": "return db.query(Thread).filter(Thread.id == thread_id, Thread.owner_id == user.id).one()",
+            "truncated": false,
+            "range": {
+              "file": "app/api/threads.py",
+              "startLine": 14,
+              "endLine": 14
+            }
+          }
+        }
+      ],
+      "relatedRoutes": [
+        {
+          "routeId": "route_post_thread_runs",
+          "relations": ["same_model", "same_path_prefix", "shared_auth_symbol"],
+          "sharedSymbolIds": ["sym_thread", "sym_get_current_user"]
+        }
+      ],
+      "budget": {
+        "limits": {
+          "maxCallDepth": 6,
+          "maxCallNodes": 40,
+          "maxSnippetChars": 480
+        },
+        "counts": {
+          "authSteps": 1,
+          "callNodes": 4,
+          "dataAccesses": 1,
+          "snippets": 4
+        },
+        "coverage": {
+          "authChain": "complete",
+          "callGraph": "complete",
+          "dataFlow": "complete"
+        },
+        "omitted": []
+      }
+    }
+  ]
+}
