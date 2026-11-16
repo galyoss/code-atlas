@@ -1,6 +1,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { X } from 'lucide-react';
 import { scan } from '../data';
+import { callNodeId } from '../graph/adapter';
 import type {
   AtlasGraph,
   AuthStep,
@@ -13,7 +14,13 @@ import type {
 
 const location = (range: SourceRange) =>
   `${range.file}:${range.startLine}${range.endLine === range.startLine ? '' : `–${range.endLine}`}`;
-function Excerpt({ snippet, label = 'Source excerpt' }: { snippet?: Snippet; label?: string }) {
+function Excerpt({
+  snippet,
+  label = 'Source excerpt',
+}: {
+  snippet?: Snippet;
+  label?: string;
+}) {
   return snippet ? (
     <section className="evidence-block">
       <h3>{label}</h3>
@@ -21,14 +28,20 @@ function Excerpt({ snippet, label = 'Source excerpt' }: { snippet?: Snippet; lab
       <pre>
         <code>{snippet.text}</code>
       </pre>
-      {snippet.truncated && <p className="muted-note">Excerpt truncated in the scan document.</p>}
+      {snippet.truncated && (
+        <p className="muted-note">Excerpt truncated in the scan document.</p>
+      )}
     </section>
   ) : null;
 }
 function AuthEvidence({ step }: { step: AuthStep }) {
   return (
     <section className="evidence-block">
-      <h3>{step.kind === 'authorization' ? 'Authorization check' : 'Authentication check'}</h3>
+      <h3>
+        {step.kind === 'authorization'
+          ? 'Authorization check'
+          : 'Authentication check'}
+      </h3>
       <p>{step.qualifiedName}</p>
       <p className="source-location">{location(step.range)}</p>
       <dl>
@@ -46,22 +59,20 @@ function AuthEvidence({ step }: { step: AuthStep }) {
 function AccessEvidence({
   access,
   route,
-  summary = false,
 }: {
   access: DataAccess;
   route: Route;
-  summary?: boolean;
 }) {
   return (
     <section className="evidence-block">
       <h3>
         {access.operation} {access.object.name}
       </h3>
-      {summary && (
+      {
         <p className="source-location">
           {route.httpMethod} {route.pathTemplate} · {access.callId}
         </p>
-      )}
+      }
       <dl>
         <dt>Persistence API</dt>
         <dd>{access.persistenceApi}</dd>
@@ -84,7 +95,8 @@ function AccessEvidence({
           <summary>Request parameter flows</summary>
           {access.paramFlows.map((flow, index) => (
             <p key={index}>
-              {flow.entryParamId} → {flow.field} <span className="muted-note">({flow.confidence})</span>
+              {flow.entryParamId} → {flow.field}{' '}
+              <span className="muted-note">({flow.confidence})</span>
             </p>
           ))}
         </details>
@@ -108,10 +120,11 @@ function ScopeEvidence({ graph }: { graph: AtlasGraph }) {
     <>
       <p>{document.note}</p>
       <p>
-        {document.routes.length} FastAPI route slices and {document.symbolIndex.length} indexed symbols are
-        included. This static scan includes example code; it does not establish which endpoints are deployed.
-        Coverage is route-oriented, not a complete repository call graph. No security review agents ran and no
-        findings are supplied.
+        {document.routes.length} FastAPI route slices and{' '}
+        {document.symbolIndex.length} indexed symbols are included. This static
+        scan includes example code; it does not establish which endpoints are
+        deployed. Coverage is route-oriented, not a complete repository call
+        graph. No security review agents ran and no findings are supplied.
       </p>
       <dl>
         <dt>Repository</dt>
@@ -171,8 +184,9 @@ function ScopeEvidence({ graph }: { graph: AtlasGraph }) {
         ))}
       </section>
       <p>
-        Graph positions group relationships; they do not establish execution order. Authentication context and
-        data summaries are distinct from recorded calls.
+        Graph positions group relationships; they do not establish execution
+        order. Authentication context and data summaries are distinct from
+        recorded calls.
       </p>
     </>
   );
@@ -184,7 +198,13 @@ interface Props {
   onClose: () => void;
   returnFocus: RefObject<HTMLButtonElement | null>;
 }
-export function SourcePanel({ graph, node, mode, onClose, returnFocus }: Props) {
+export function SourcePanel({
+  graph,
+  node,
+  mode,
+  onClose,
+  returnFocus,
+}: Props) {
   const closeButton = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -199,10 +219,13 @@ export function SourcePanel({ graph, node, mode, onClose, returnFocus }: Props) 
   }, [node.id, mode]);
   const checks =
     node.route?.authChain.filter(
-      (step) => step.mechanism === 'inline' && step.symbolId === node.symbol?.id,
+      (step) =>
+        step.mechanism === 'inline' && step.symbolId === node.symbol?.id,
     ) || [];
   const omissions =
-    node.route?.budget.omitted.filter((item) => !node.call || item.callId === node.call.id) || [];
+    node.route?.budget.omitted.filter(
+      (item) => !node.call || item.callId === node.call.id,
+    ) || [];
   return (
     <aside
       ref={panel}
@@ -226,16 +249,24 @@ export function SourcePanel({ graph, node, mode, onClose, returnFocus }: Props) 
       >
         <X size={17} />
       </button>
-      <div className="eyebrow">{mode === 'scope' ? 'Graph scope' : 'Source evidence'}</div>
-      <h2 id="source-title">{mode === 'scope' ? `${scan.name} · real scan` : node.name}</h2>
+      <div className="eyebrow">
+        {mode === 'scope' ? 'Graph scope' : 'Source evidence'}
+      </div>
+      <h2 id="source-title">
+        {mode === 'scope' ? `${scan.name} · real scan` : node.name}
+      </h2>
       {mode === 'scope' ? (
         <ScopeEvidence graph={graph} />
       ) : (
         <>
           <p className="qualified-name">
-            {node.call?.qualifiedName || node.symbol?.qualifiedName || node.name}
+            {node.call?.qualifiedName ||
+              node.symbol?.qualifiedName ||
+              node.name}
           </p>
-          {node.range && <p className="source-location">{location(node.range)}</p>}
+          {node.range && (
+            <p className="source-location">{location(node.range)}</p>
+          )}
           {node.symbol && (
             <section className="evidence-block">
               <h3>Declaration</h3>
@@ -248,6 +279,16 @@ export function SourcePanel({ graph, node, mode, onClose, returnFocus }: Props) 
           {node.call && (
             <>
               <dl>
+                <dt>Route</dt>
+                <dd>
+                  {node.route?.httpMethod} {node.route?.pathTemplate}
+                </dd>
+                {node.evidence?.authStepId && (
+                  <>
+                    <dt>Auth step</dt>
+                    <dd>{node.evidence.authStepId}</dd>
+                  </>
+                )}
                 <dt>Call occurrence</dt>
                 <dd>{node.call.id}</dd>
                 <dt>Resolution</dt>
@@ -268,41 +309,119 @@ export function SourcePanel({ graph, node, mode, onClose, returnFocus }: Props) 
               <Excerpt snippet={node.call.snippet} />
               {node.call.resolution === 'ambiguous' && (
                 <p className="coverage-note">
-                  This invocation is recorded, but its runtime target is unresolved. No deeper call path is
-                  available.
+                  This invocation is recorded, but its runtime target is
+                  unresolved. No target is inferred from the invocation name.
                 </p>
               )}
               {node.call.resolution === 'external' && (
                 <p className="coverage-note">
-                  External call. Its implementation is outside this repository slice.
+                  External call. Its implementation is outside this repository
+                  slice.
                 </p>
               )}
               {node.call.expanded === 'partial' && (
                 <p className="coverage-note">
-                  Partial expansion: these {node.children.length} recorded children are not the complete
-                  function body.
+                  Partial expansion: these {node.children.length} recorded
+                  children are not the complete function body.
                 </p>
               )}
-              {node.call.expanded === 'no' && node.call.resolution === 'resolved' && (
-                <p className="coverage-note">This call was not expanded in the scan document.</p>
-              )}
+              {node.call.expanded === 'no' &&
+                node.call.resolution === 'resolved' && (
+                  <p className="coverage-note">
+                    This call was not expanded in the scan document.
+                  </p>
+                )}
             </>
           )}
-          {node.kind === 'route' && (
-            <Excerpt snippet={node.route?.registration.snippet} label="Route registration" />
+          {node.groupedRoutes?.map((route) => (
+            <section key={route.id}>
+              <h3>
+                {route.httpMethod} {route.pathTemplate}
+              </h3>
+              <Excerpt
+                snippet={route.registration.snippet}
+                label="Route registration"
+              />
+            </section>
+          ))}
+          {node.canonical && (
+            <section className="evidence-block">
+              <h3>Recorded call relationships</h3>
+              <p>
+                Directed static relationships, aggregated across route slices.
+                Record counts are evidence occurrences, not execution frequency.
+              </p>
+              {graph.edges
+                .filter(
+                  (edge) =>
+                    edge.aggregated &&
+                    (edge.from === node.id || edge.to === node.id),
+                )
+                .map((edge) => {
+                  const outgoing = edge.from === node.id;
+                  const other = graph.nodes.get(
+                    outgoing ? edge.to : edge.from,
+                  )!;
+                  return (
+                    <details key={edge.id}>
+                      <summary>
+                        {outgoing ? 'Calls' : 'Called by'} {other.name} ·{' '}
+                        {edge.evidence.length} records
+                      </summary>
+                      <p className="source-location">
+                        {other.symbol?.qualifiedName}
+                      </p>
+                      {edge.evidence.map((ref) => {
+                        const occurrence = graph.nodes.get(
+                          callNodeId(ref.routeId, ref.callId, ref.authStepId),
+                        )!;
+                        return (
+                          <section
+                            className="evidence-block"
+                            key={occurrence.id}
+                          >
+                            <p>
+                              {occurrence.route?.httpMethod}{' '}
+                              {occurrence.route?.pathTemplate}
+                            </p>
+                            <p className="source-location">
+                              {ref.callId}
+                              {ref.authStepId
+                                ? ` · auth: ${ref.authStepId}`
+                                : ''}
+                            </p>
+                            <p className="source-location">
+                              {location(occurrence.range!)}
+                            </p>
+                            {occurrence.call?.argumentsExcerpt && (
+                              <pre>
+                                <code>{occurrence.call.argumentsExcerpt}</code>
+                              </pre>
+                            )}
+                            <Excerpt snippet={occurrence.call?.snippet} />
+                          </section>
+                        );
+                      })}
+                    </details>
+                  );
+                })}
+            </section>
           )}
           {checks.map((step) => (
             <AuthEvidence key={step.id} step={step} />
           ))}
-          {node.kind === 'auth' && (
+          {node.authSteps.length > 0 && (
             <>
               <p className="coverage-note">
                 Authentication context for {node.authSteps.length} route{' '}
-                {node.authSteps.length === 1 ? 'slice' : 'slices'}. Its recorded internals stay collapsed in
-                this handler-call explorer.
+                {node.authSteps.length === 1 ? 'slice' : 'slices'}. Handler
+                detail exposes each route's auth context and its recorded calls.
               </p>
               {node.authSteps.map(({ route, step }) => (
-                <section className="evidence-block" key={`${route.id}:${step.id}`}>
+                <section
+                  className="evidence-block"
+                  key={`${route.id}:${step.id}`}
+                >
                   <h3>
                     {route.httpMethod} {route.pathTemplate}
                   </h3>
@@ -311,25 +430,20 @@ export function SourcePanel({ graph, node, mode, onClose, returnFocus }: Props) 
               ))}
             </>
           )}
-          {node.kind === 'model' && (
-            <p className="coverage-note">
-              Aggregated data summary: {node.accesses.length} recorded accesses. Each occurrence below belongs
-              to its own route.
-            </p>
-          )}
           {node.accesses.map(({ route, access }) => (
             <AccessEvidence
               key={`${route.id}:${access.id}`}
               route={route}
               access={access}
-              summary={node.kind === 'model'}
             />
           ))}
           {!node.call?.snippet &&
             !node.call?.argumentsExcerpt &&
             !node.authSteps.length &&
             !node.accesses.length &&
-            node.kind !== 'route' && <p>No source excerpt is attached to this item.</p>}
+            node.kind !== 'route' && (
+              <p>No source excerpt is attached to this item.</p>
+            )}
           {node.route && (
             <section className="evidence-block">
               <h3>Route coverage</h3>
@@ -347,7 +461,8 @@ export function SourcePanel({ graph, node, mode, onClose, returnFocus }: Props) 
               {omissions.length > 0 && (
                 <details>
                   <summary>
-                    {omissions.length} recorded {omissions.length === 1 ? 'omission' : 'omissions'}
+                    {omissions.length} recorded{' '}
+                    {omissions.length === 1 ? 'omission' : 'omissions'}
                   </summary>
                   {omissions.map((item) => (
                     <p key={item.id}>
@@ -361,7 +476,8 @@ export function SourcePanel({ graph, node, mode, onClose, returnFocus }: Props) 
             </section>
           )}
           <p className="panel-footnote">
-            Real Joern scan · partial static analysis · no agent security review.
+            Real Joern scan · partial static analysis · no agent security
+            review.
           </p>
         </>
       )}

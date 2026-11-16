@@ -1,235 +1,126 @@
 import { describe, expect, it } from 'vitest';
 import aegra from '../../docs/code-graph-example-aegra.json';
 import papertrail from '../../docs/code-graph-example.json';
-import type { GraphDocument } from './types';
-import { adaptGraph, callNodeId, routeNodeId, routeGraph, visibleIds } from './adapter';
-import { fitCamera, initialCamera, layoutGraph, NODE_HEIGHT, NODE_WIDTH, zoomCamera } from './layout';
+import type { Call, GraphDocument } from './types';
+import { adaptGraph, callNodeId, visibleIds } from './adapter';
+import { DetailAnchors, layoutGraph, zoomCamera } from './layout';
 import { initialNavigation, navigate } from './navigation';
-
-const datasets = {
-  aegra: adaptGraph(aegra as GraphDocument),
-  papertrail: adaptGraph(papertrail as GraphDocument),
-};
-const graph = routeGraph(datasets.aegra, datasets.aegra.defaultId);
-const route = routeNodeId('route_post_thread_runs');
+const graph = adaptGraph(aegra as GraphDocument);
+const route = graph.document.routes[0].handler.symbolId;
 const call = (id: string) => callNodeId('route_post_thread_runs', id);
-
-describe('authoritative fixture adaptation', () => {
-  it('preserves every handler call occurrence while leaving auth internals collapsed', () => {
-    for (const [dataset, roots, totals] of [
-      [datasets.aegra, [3, 5], [11, 6]],
-      [datasets.papertrail, [4, 1], [5, 1]],
-    ] as const) {
-      dataset.document.routes.forEach((item, index) => {
-        expect(dataset.nodes.get(routeNodeId(item.id))!.children).toHaveLength(roots[index]);
-        expect(
-          [...dataset.nodes.values()].filter((node) => node.route?.id === item.id && node.call),
-        ).toHaveLength(totals[index]);
-      });
-      expect(
-        [...dataset.nodes.values()]
-          .filter((node) => node.kind === 'auth')
-          .every((node) => node.children.length === 0),
-      ).toBe(true);
-      expect(dataset.edges.filter((edge) => edge.kind === 'call' || edge.kind === 'unresolved')).toHaveLength(
-        totals.reduce((a, b) => a + b, 0),
-      );
+const flatten = (calls: Call[]): Call[] =>
+  calls.flatMap((call) => [call, ...flatten(call.children)]);
+describe('source and occurrence fidelity', () => {
+  it('retains handler and authentication occurrences with exact original evidence', () => {
+    for (const document of [aegra, papertrail] as GraphDocument[]) {
+      const adapted = adaptGraph(document);
+      for (const route of document.routes) {
+        for (const item of flatten(route.callGraph))
+          expect(adapted.nodes.get(callNodeId(route.id, item.id))?.call).toBe(
+            item,
+          );
+        for (const step of route.authChain)
+          for (const item of flatten(step.calls))
+            expect(
+              adapted.nodes.get(callNodeId(route.id, item.id, step.id))?.call,
+            ).toBe(item);
+      }
     }
   });
-  it('keeps repeated symbols and identical source locations as distinct occurrences', () => {
-    const threads = graph.nodes.get(call('call_cr_handle_threads'))!;
-    const assistants = graph.nodes.get(call('call_cr_handle_assistants'))!;
-    expect(threads.symbol?.id).toBe(assistants.symbol?.id);
-    expect(threads.id).not.toBe(assistants.id);
-    expect(threads.children).toEqual([call('call_cr_threads_handler')]);
-    expect(assistants.children).toEqual([call('call_cr_assistants_handler')]);
-    for (const id of [...threads.children, ...assistants.children]) {
-      expect(graph.nodes.get(id)).toMatchObject({
-        kind: 'gap',
-        children: [],
-        call: { resolution: 'ambiguous' },
-      });
-    }
-  });
-  it('qualifies call IDs by route, even if two route slices reuse an ID', () => {
-    const document = structuredClone(datasets.papertrail.document);
-    document.routes[1].callGraph[0].id = document.routes[0].callGraph[0].id;
-    const adapted = adaptGraph(document);
-    const first = adapted.nodes.get(routeNodeId(document.routes[0].id))!.children[0];
-    const second = adapted.nodes.get(routeNodeId(document.routes[1].id))!.children[0];
-    expect(first).not.toBe(second);
-    expect(adapted.nodes.get(first)!.call?.callSite.file).toBe('app/api/runs.py');
-    expect(adapted.nodes.get(second)!.call?.callSite.file).toBe('app/api/threads.py');
-  });
-  it('retains all data-summary accesses and their original source text', () => {
-    const summary = graph.nodes.get('model:sym_thread')!;
-    expect(summary.accesses).toHaveLength(2);
-    expect(summary.accesses.map(({ access }) => access.ownershipEvidence.inPredicate)).toEqual(['no', 'yes']);
+  it('keeps same-symbol occurrences and unresolved children distinct', () => {
+    const a = graph.nodes.get(call('call_cr_handle_threads'))!,
+      b = graph.nodes.get(call('call_cr_handle_assistants'))!;
+    expect(a.symbol?.id).toBe(b.symbol?.id);
+    expect(a.id).not.toBe(b.id);
+    expect(a.children).toEqual([call('call_cr_threads_handler')]);
+    expect(b.children).toEqual([call('call_cr_assistants_handler')]);
+    expect(graph.nodes.get(a.children[0])?.kind).toBe('gap');
     const scalar = graph.nodes.get(call('call_cr_scalar'))!;
-    expect(scalar.name).toBe('scalar');
-    expect(scalar.accesses[0].access.snippet).toEqual(graph.document.routes[0].dataAccesses[0].snippet);
-    expect(graph.nodes.get(route)!.symbol?.range.startLine).toBe(112);
+    expect(scalar.accesses[0].access.snippet).toEqual(
+      graph.document.routes[0].dataAccesses[0].snippet,
+    );
+  });
+  it('uses route, auth-step and call ID as a collision-safe tuple', () => {
+    expect(callNodeId('a:b', 'c')).not.toBe(callNodeId('a', 'b:c'));
+    expect(callNodeId('a', 'c', 'auth')).not.toBe(callNodeId('a', 'c'));
   });
 });
-
-describe('local exploration and exact navigation history', () => {
-  it('reveals only direct calls, retains ancestors, and never changes fixed positions or camera', () => {
-    const positions = layoutGraph(graph);
-    const anchors = new Map(positions);
-    let state = navigate(graph, initialNavigation(graph), {
-      type: 'camera',
-      camera: { scale: 1.3, x: -121, y: 87 },
-    });
-    const camera = state.camera;
-    state = navigate(graph, state, { type: 'expand', id: route });
-    expect([...visibleIds(graph, state.path)].filter((id) => !graph.baseIds.includes(id))).toEqual(
-      graph.nodes.get(route)!.children,
-    );
-    state = navigate(graph, state, {
-      type: 'expand',
-      id: call('call_cr_prepare'),
-    });
-    expect(state.path).toEqual([route, call('call_cr_prepare')]);
-    expect(visibleIds(graph, state.path).size).toBe(graph.baseIds.length + 3 + 4);
-    expect(visibleIds(graph, state.path).has(call('call_cr_handle_threads'))).toBe(false);
-    expect(state.camera).toEqual(camera);
-    expect(layoutGraph(graph)).toEqual(anchors);
-  });
-  it('Back restores exact selection, path and camera after deeper panning and zooming', () => {
-    let state = navigate(graph, initialNavigation(graph), {
-      type: 'expand',
+describe('persistent exploration state', () => {
+  it('keeps two branches open and restores the exact view with Back', () => {
+    let state = navigate(graph, initialNavigation(), {
+      type: 'toggle',
       id: route,
     });
     state = navigate(graph, state, {
-      type: 'select',
+      type: 'toggle',
       id: call('call_cr_prepare'),
     });
     state = navigate(graph, state, {
       type: 'camera',
-      camera: { scale: 1.152, x: -235.15, y: 16.125 },
+      camera: { x: -23.5, y: 63.7, scale: 1.23 },
     });
     const before = structuredClone(state);
     state = navigate(graph, state, {
-      type: 'expand',
-      id: call('call_cr_prepare'),
-    });
-    state = navigate(graph, state, { type: 'select', id: call('call_cr_add') });
-    state = navigate(graph, state, {
-      type: 'camera',
-      camera: { scale: 0.6, x: 93, y: -207 },
-    });
-    state = navigate(graph, state, { type: 'back' });
-    expect(state).toEqual(before);
-  });
-  it('switches one deep branch and rejects a stale selection or expansion from exiting nodes', () => {
-    let state = navigate(graph, initialNavigation(graph), {
-      type: 'expand',
-      id: route,
-    });
-    state = navigate(graph, state, {
-      type: 'expand',
+      type: 'toggle',
       id: call('call_cr_apply'),
     });
+    expect(state.expanded.has(call('call_cr_prepare'))).toBe(true);
+    expect(state.expanded.has(call('call_cr_apply'))).toBe(true);
+    expect(state.camera).toEqual(before.camera);
     state = navigate(graph, state, {
-      type: 'expand',
-      id: call('call_cr_handle_threads'),
-    });
-    state = navigate(graph, state, {
-      type: 'select',
-      id: call('call_cr_threads_handler'),
-    });
-    expect(
-      navigate(graph, state, {
-        type: 'expand',
-        id: call('call_cr_threads_handler'),
-      }),
-    ).toBe(state);
-    state = navigate(graph, state, {
-      type: 'expand',
-      id: call('call_cr_handle_assistants'),
-    });
-    expect(state.path.at(-1)).toBe(call('call_cr_handle_assistants'));
-    expect(visibleIds(graph, state.path).has(call('call_cr_threads_handler'))).toBe(false);
-    expect(
-      navigate(graph, state, {
-        type: 'select',
-        id: call('call_cr_threads_handler'),
-      }),
-    ).toBe(state);
-    state = navigate(graph, state, {
-      type: 'collapse',
-      id: call('call_cr_apply'),
-    });
-    expect(state.selected).toBe(call('call_cr_apply'));
-    expect(visibleIds(graph, state.path).has(state.selected)).toBe(true);
-    expect(state.path).toEqual([route]);
-  });
-  it('breadcrumbs restore their saved view and a new dataset starts with its own clean state', () => {
-    let state = navigate(graph, initialNavigation(graph), {
       type: 'camera',
-      camera: { scale: 0.9, x: 77, y: -18 },
+      camera: { x: 999, y: -200, scale: 0.7 },
     });
-    const overview = structuredClone(state);
-    state = navigate(graph, state, { type: 'expand', id: route });
-    state = navigate(graph, state, {
-      type: 'expand',
-      id: call('call_cr_prepare'),
-    });
-    expect(navigate(graph, state, { type: 'breadcrumb', depth: 0 })).toEqual(overview);
-    const paper = initialNavigation(datasets.papertrail);
-    expect(paper.history).toEqual([]);
-    expect(paper.path).toEqual([]);
-    expect(datasets.papertrail.nodes.get(paper.selected)!.range?.file).toBe('app/api/runs.py');
+    expect(navigate(graph, state, { type: 'back' })).toEqual(before);
   });
-  it('zoom changes only the camera and preserves the world point under its center', () => {
-    const state = navigate(graph, initialNavigation(graph), {
-      type: 'expand',
+  it('collapses groups in place and prevents stale hidden selections', () => {
+    let state = navigate(graph, initialNavigation(), {
+      type: 'toggle',
       id: route,
     });
-    const camera = { scale: 0.8, x: 32, y: -56 };
-    const center = { x: 600, y: 300 };
-    const nextCamera = zoomCamera(camera, 1.15, center);
-    expect((center.x - nextCamera.x) / nextCamera.scale).toBeCloseTo((center.x - camera.x) / camera.scale);
-    const next = navigate(graph, state, { type: 'camera', camera: nextCamera });
-    expect(next.path).toBe(state.path);
-    expect(next.selected).toBe(state.selected);
-    expect(next.history).toBe(state.history);
+    const group = graph.nodes.get(route)!.groupId!;
+    state = navigate(graph, state, { type: 'toggle', id: group });
+    expect(state.selected).toBe(group);
+    expect(visibleIds(graph, state.expanded, state.collapsed).has(route)).toBe(
+      false,
+    );
+    expect(
+      navigate(graph, state, { type: 'select', id: call('call_cr_prepare') }),
+    ).toBe(state);
+    state = navigate(graph, state, { type: 'toggle', id: group });
+    expect(
+      visibleIds(graph, state.expanded, state.collapsed).has(
+        call('call_cr_prepare'),
+      ),
+    ).toBe(true);
   });
-});
-
-describe('initial framing readability', () => {
-  it('keeps the starting route readable and onscreen across width boundaries and short canvases', () => {
-    const viewports = [
-      [390, 600],
-      [699, 600],
-      [700, 600],
-      [800, 600],
-      [900, 600],
-      [1280, 400],
-      [1280, 300],
-    ];
-    for (const full of Object.values(datasets)) {
-      const dataset = routeGraph(full, full.defaultId);
-      const positions = layoutGraph(dataset);
-      const selected = positions.get(dataset.defaultId)!;
-      for (const [width, height] of viewports) {
-        const camera = initialCamera(positions, dataset, width, height);
-        // Match the readable narrow entry view, not an arbitrary whole-graph fit.
-        expect(camera.scale, `${dataset.document.repo.name} at ${width}×${height}`).toBeGreaterThanOrEqual(
-          0.95,
-        );
-        const left = selected.x * camera.scale + camera.x;
-        const top = selected.y * camera.scale + camera.y;
-        expect(left).toBeGreaterThanOrEqual(0);
-        expect(top).toBeGreaterThanOrEqual(0);
-        expect(left + NODE_WIDTH * camera.scale).toBeLessThanOrEqual(width);
-        expect(top + NODE_HEIGHT * camera.scale).toBeLessThanOrEqual(height);
-      }
-      // Roomy canvases still show the full overview; explicit Fit remains available at any size.
-      expect(initialCamera(positions, dataset, 1920, 900)).toEqual(
-        fitCamera(positions, new Set(dataset.baseIds), 1920, 900),
-      );
-      expect(fitCamera(positions, new Set(dataset.baseIds), 390, 300).scale).toBeLessThan(0.95);
-    }
+  it('freezes canonical and previously allocated detail anchors across toggles', () => {
+    const layout = layoutGraph(graph),
+      anchors = new DetailAnchors(layout);
+    let state = navigate(graph, initialNavigation(), {
+      type: 'toggle',
+      id: route,
+    });
+    anchors.ensure(graph, visibleIds(graph, state.expanded, state.collapsed));
+    const before = new Map(anchors.positions);
+    state = navigate(graph, state, {
+      type: 'toggle',
+      id: call('call_cr_prepare'),
+    });
+    anchors.ensure(graph, visibleIds(graph, state.expanded, state.collapsed));
+    for (const [id, point] of before)
+      expect(anchors.positions.get(id)).toEqual(point);
+    expect(layoutGraph(graph)).toEqual(layout);
+  });
+  it('keeps the world point beneath pointer-centered zoom unchanged', () => {
+    const camera = { scale: 0.8, x: 32, y: -56 },
+      center = { x: 600, y: 300 },
+      next = zoomCamera(camera, 1.15, center);
+    expect((center.x - next.x) / next.scale).toBeCloseTo(
+      (center.x - camera.x) / camera.scale,
+    );
+    expect((center.y - next.y) / next.scale).toBeCloseTo(
+      (center.y - camera.y) / camera.scale,
+    );
   });
 });

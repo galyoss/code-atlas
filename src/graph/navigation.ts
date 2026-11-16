@@ -1,40 +1,33 @@
-import { ancestors, routeGraph, visibleIds } from './adapter';
-import { overviewGraph } from './catalog';
+import { visibleIds } from './adapter';
 import type { AtlasGraph, Camera } from './types';
-
 export interface ViewSnapshot {
-  scope: string | null;
-  path: string[];
-  selected: string;
+  expanded: Set<string>;
+  collapsed: Set<string>;
+  selected: string | null;
   camera: Camera;
 }
 export interface NavigationState extends ViewSnapshot {
   history: ViewSnapshot[];
 }
 export type NavigationAction =
-  | { type: 'select' | 'expand' | 'collapse'; id: string }
+  | { type: 'select'; id: string | null }
+  | { type: 'toggle'; id: string }
+  | { type: 'reveal'; id: string; camera?: Camera }
   | { type: 'camera'; camera: Camera }
-  | { type: 'breadcrumb'; depth: number }
-  | { type: 'focus-route'; id: string; camera: Camera }
-  | { type: 'overview' }
   | { type: 'back' };
-const snapshot = ({ scope, path, selected, camera }: ViewSnapshot): ViewSnapshot => ({
-  scope,
-  path: [...path],
-  selected,
-  camera: { ...camera },
+const snapshot = (state: ViewSnapshot): ViewSnapshot => ({
+  expanded: new Set(state.expanded),
+  collapsed: new Set(state.collapsed),
+  selected: state.selected,
+  camera: { ...state.camera },
 });
-export const initialNavigation = (
-  graph: AtlasGraph,
-  scope: string | null = graph.defaultId,
-): NavigationState => ({
-  scope,
-  path: [],
-  selected: scope === null ? 'repository' : scope,
-  camera: { scale: 1, x: 0, y: 0 },
+export const initialNavigation = (): NavigationState => ({
+  expanded: new Set(),
+  collapsed: new Set(),
+  selected: null,
+  camera: { x: 0, y: 0, scale: 1 },
   history: [],
 });
-
 export function navigate(
   graph: AtlasGraph,
   state: NavigationState,
@@ -43,79 +36,42 @@ export function navigate(
   if (action.type === 'camera') return { ...state, camera: action.camera };
   if (action.type === 'back') {
     const previous = state.history.at(-1);
-    return previous ? { ...snapshot(previous), history: state.history.slice(0, -1) } : state;
-  }
-  if (action.type === 'overview') {
-    if (state.scope === null) return state;
-    const prior = state.history.findLastIndex((item) => item.scope === null);
-    return prior >= 0
-      ? {
-          ...snapshot(state.history[prior]),
-          history: state.history.slice(0, prior),
-        }
-      : {
-          ...state,
-          scope: null,
-          path: [],
-          selected: 'repository',
-          history: [...state.history, snapshot(state)],
-        };
-  }
-  if (action.type === 'focus-route') {
-    if (graph.nodes.get(action.id)?.kind !== 'route') return state;
-    if (state.scope === action.id) return state;
-    return {
-      scope: action.id,
-      path: [],
-      selected: action.id,
-      camera: action.camera,
-      history: [...state.history, snapshot(state)],
-    };
-  }
-  if (state.scope === null) {
-    return action.type === 'select' && overviewGraph(graph).nodes.has(action.id)
-      ? { ...state, selected: action.id }
+    return previous
+      ? { ...snapshot(previous), history: state.history.slice(0, -1) }
       : state;
   }
-  if (action.type === 'breadcrumb') {
-    if (action.depth < 0 || action.depth >= state.path.length) return state;
-    const path = state.path.slice(0, action.depth);
-    const prior = state.history.findLastIndex(
-      (item) =>
-        item.scope === state.scope &&
-        item.path.length === path.length &&
-        item.path.every((id, i) => id === path[i]),
-    );
-    if (prior >= 0)
-      return {
-        ...snapshot(state.history[prior]),
-        history: state.history.slice(0, prior),
-      };
-    return {
-      ...state,
-      path,
-      selected: state.path[action.depth],
-      history: [...state.history, snapshot(state)],
-    };
-  }
-  const node = graph.nodes.get(action.id);
-  if (!node || !visibleIds(routeGraph(graph, state.scope), state.path).has(action.id)) return state;
-  if (action.type === 'select') return { ...state, selected: action.id };
-  if (action.type === 'expand') {
-    if (!node.children.length || state.path.includes(node.id)) return state;
-    return {
-      ...state,
-      selected: node.id,
-      path: ancestors(graph, node.id),
-      history: [...state.history, snapshot(state)],
-    };
-  }
-  const index = state.path.indexOf(node.id);
-  if (index < 0) return state;
-  return {
-    ...state,
-    selected: node.id,
-    path: state.path.slice(0, index),
+  if (action.type === 'select' && action.id === state.selected) return state;
+  if (action.id && !graph.nodes.has(action.id)) return state;
+  const next = {
+    ...snapshot(state),
     history: [...state.history, snapshot(state)],
   };
+  if (action.type === 'select') {
+    if (
+      action.id &&
+      !visibleIds(graph, state.expanded, state.collapsed).has(action.id)
+    )
+      return state;
+    next.selected = action.id;
+  } else if (action.type === 'reveal') {
+    const node = graph.nodes.get(action.id)!;
+    if (!node.canonical) return state;
+    next.collapsed.delete(node.groupId!);
+    next.selected = action.id;
+    if (action.camera) next.camera = action.camera;
+  } else {
+    const node = graph.nodes.get(action.id)!;
+    if (!visibleIds(graph, state.expanded, state.collapsed).has(node.id))
+      return state;
+    if (node.kind === 'group') {
+      if (next.collapsed.has(node.id)) next.collapsed.delete(node.id);
+      else next.collapsed.add(node.id);
+    } else {
+      if (!node.children.length) return state;
+      if (next.expanded.has(node.id)) next.expanded.delete(node.id);
+      else next.expanded.add(node.id);
+    }
+    next.selected = node.id;
+  }
+  return next;
 }

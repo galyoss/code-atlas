@@ -96,7 +96,19 @@ export interface GraphDocument {
     detail: string;
   }[];
 }
-export type NodeKind = 'route' | 'auth' | 'model' | 'call' | 'data' | 'gap' | 'repository' | 'group';
+export type NodeKind =
+  | 'symbol'
+  | 'route'
+  | 'auth'
+  | 'call'
+  | 'data'
+  | 'gap'
+  | 'group';
+export interface EvidenceRef {
+  routeId: string;
+  callId: string;
+  authStepId?: string;
+}
 export interface GraphNode {
   id: string;
   name: string;
@@ -104,25 +116,37 @@ export interface GraphNode {
   kind: NodeKind;
   children: string[];
   parent?: string;
+  groupId?: string;
   route?: Route;
   call?: Call;
   symbol?: SymbolDefinition;
   range?: SourceRange;
   accesses: { route: Route; access: DataAccess }[];
   authSteps: { route: Route; step: AuthStep }[];
+  evidence?: EvidenceRef;
   groupedRoutes?: Route[];
   sourceFile?: string;
+  canonical?: boolean;
 }
 export interface GraphEdge {
   id: string;
   from: string;
   to: string;
-  kind: 'summary' | 'context' | 'call' | 'unresolved' | 'contains';
+  kind: 'call' | 'context' | 'unresolved' | 'definition';
+  evidence: EvidenceRef[];
+  aggregated?: boolean;
+}
+export interface SourceGroup {
+  id: string;
+  file: string;
+  name: string;
+  members: string[];
 }
 export interface AtlasGraph {
   document: GraphDocument;
   nodes: Map<string, GraphNode>;
   baseIds: string[];
+  groups: SourceGroup[];
   edges: GraphEdge[];
   defaultId: string;
 }

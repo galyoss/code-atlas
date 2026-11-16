@@ -1,23 +1,25 @@
 # CodeAtlas
 
-A full-window code graph for exploring route handlers, recorded calls and source
-evidence. The default app opens a **real Joern scan of Aegra v0.11.0**:
-59 routes, 213 indexed symbols, and 9 source files at revision `46055c0`.
-The unchanged scan document and its provenance are in [`docs/scans`](docs/scans/README.md).
+A continuous code network for exploring a real Joern scan of **Aegra v0.11.0**,
+revision `46055c0`. Atlas opens on all **213 indexed symbols in 43 source files**,
+including 59 route handlers, with **244 recorded directed call pairs**. Of these,
+141 cross source files. Every aggregated pair retains its route-specific evidence;
+1,222 recorded occurrences support the canonical links.
 
-## Run the app locally
+The unchanged document and provenance are in [`docs/scans`](docs/scans/README.md).
 
-Use Node.js 22.12 or newer (verified with Node 22.18 and npm 10.9).
+## Run locally
+
+Use Node.js 22.12 or newer.
 
 ```sh
 npm ci
 npm run dev -- --host 127.0.0.1
 ```
 
-Open Vite's URL, normally <http://127.0.0.1:5173>. No account, backend, external
-API or CDN is needed; fonts, icons and the scan asset are served locally. The
-committed lockfile supports npm 10.9; dependency refreshes used npm 11.6.2 to avoid
-an npm 10 optional-peer resolution bug.
+Open <http://127.0.0.1:5173>. No account, backend, external API or CDN is needed;
+fonts, icons and the scan asset are served locally. The committed lockfile supports
+npm 10.9; dependency refreshes used npm 11.6.2 to avoid an npm 10 optional-peer bug.
 
 ```sh
 npm run typecheck
@@ -26,56 +28,76 @@ npm run build
 npm run preview -- --host 127.0.0.1
 ```
 
-The production build is served at <http://127.0.0.1:4173>. `dist/` is generated and
+The production preview is at <http://127.0.0.1:4173>. `dist/` is generated and
 ignored. This repository does not configure a frontend deployment.
 
-## Explore the real scan
+## Explore the network
 
-- The opening graph groups all routes by source file. Its containment lines are
-  labeled **Source grouping**, distinct from call edges. The three routes in
-  `examples/custom_routes_example.py` remain visibly identified as example code.
-- Select a source file and **Browse routes**, or use **Routes 59** from any view.
-  The directory searches literal terms across names, paths, HTTP methods and files.
-  Select a handler to focus its route slice. The toolbar identifies that scope.
-- Select a graph node, then use its **+** button or **Open calls** for direct recorded
-  calls. One deeper branch stays open; ancestors and relevant context remain.
-  Dense direct-call sets occupy bounded rows across columns instead of a tall stack.
-- Drag or use arrow keys on the focused canvas to pan. Zoom controls and `+` / `-`
-  change magnification only. **Bring selection into view** and **Fit visible graph**
-  move the camera explicitly. Expansion preserves anchors and camera.
-- **Back** restores selection, expanded path, scope, pan and zoom, including route
-  changes. **All routes** returns to the saved source-file overview.
-- **Source** shows the recorded ranges, snippets, resolution and coverage. **Real
-  scan · scope & coverage** shows provenance and known gaps. Escape closes a panel
-  or goes Back. Reduced-motion preferences remove expansion animation.
+- The opening canvas contains every indexed symbol and all resolved call pairs.
+  Square mint glyphs are handlers; circular blue glyphs are other symbols. Subtle
+  source regions provide context. File controls collapse/reopen their symbols in
+  place, preserving real links crossing the region boundary.
+- Select any glyph to highlight its actual neighbors. Full names appear on hover,
+  selection and in **Source**. Double-click a handler/call or use **Open detail** to
+  reveal its direct recorded children in the same network. Several branches can
+  remain open. Dashed auth context and definition links differ from call arrows;
+  unresolved invocations and data accesses have distinct glyphs.
+- For a concrete path, find `create_run`, press Enter to focus its canonical node,
+  open its calls, select the `_prepare_run` occurrence and open it. The canonical
+  `_prepare_run` symbol remains connected to its recorded callers across files.
+  Open another handler independently; the first branch and camera stay in place.
+- Search matches literal terms across symbol names, qualified names, files and
+  route fields. Exact identifiers rank first. Typing highlights the same scene;
+  Enter / the arrow explicitly focuses the next result. Clear resets highlighting.
+- Drag or use arrow keys on the focused canvas to pan. Wheel zoom is centered on
+  the pointer; `+` / `-` and camera buttons zoom about the viewport center. **Bring
+  selection into view** and **Fit visible graph** explicitly move the camera.
+  Selection and expansion never fit or recenter automatically. A fresh phone-sized
+  view starts near a recorded handler at usable magnification; Fit shows the full graph.
+- **Back** restores the exact camera, selection, collapsed files and expanded
+  occurrences. **Source** is closeable without graph movement. Escape closes the
+  panel, clears search, or goes Back. Shift+Space on a focused glyph toggles its
+  recorded children. Reduced-motion preferences settle expansions immediately.
+- **Partial static scan** opens provenance, the original document download, route
+  coverage and known gaps. A symbol's source panel includes its incoming/outgoing
+  canonical relationships and all supporting route/call/auth-step references.
 
 ## Data boundaries
 
-The scan is route-oriented static analysis, not a deployed-endpoint inventory or
-a complete repository call graph. It reports 55 partially covered routes and 4
+This route-oriented static scan includes example code. It is not a deployed-endpoint
+inventory or exhaustive repository graph. 55 routes have partial coverage and 4 are
 complete within their slices. Dynamic dispatch, depth/cycle/snippet budgets and
 unsupported GraphQL/WebSocket/framework behavior remain recorded gaps. No security
-review agents ran; the graph contains no vulnerability findings.
+review agents ran; no vulnerability findings are supplied.
 
-There are 3,650 handler-call occurrences plus 1,936 authentication-call occurrences.
-The canvas explores handler calls; shared authentication internals remain collapsed.
-Call identities stay distinct by route and call ID. Gold edges are data summaries;
-dashed edges are auth context or unresolved targets. Positions do not establish
-execution order. Source evidence is rendered as text without inferring findings.
+All 5,586 call occurrences are retained: 3,650 in handler trees and 1,936 in auth
+contexts. Identity includes route, optional auth step and original call ID. Canonical
+calls require the immediate parent and callee to have resolved symbol IDs; no edge
+jumps across an unresolved intermediate call or infers a target from its name.
+Record counts describe static evidence, not runtime execution frequency. Source
+ranges, invocation text, snippets, data access and ownership evidence stay intact.
 
 The original [`Aegra`](docs/code-graph-example-aegra.json) and
-[`Papertrail`](docs/code-graph-example.json) examples and schema are unchanged. They
-remain test/reference fixtures, not selectable product data. A missing or invalid
-real asset produces an explicit error instead of falling back to an example.
+[`Papertrail`](docs/code-graph-example.json) examples and schema remain test/reference
+fixtures. A missing/invalid real asset reports an explicit error without substituting
+an example. Raw SHA-256:
+`c480d2ea15034d86d163101054d0714230ef9f5e79b94918b535431ad072737e`.
 
-## Frontend implementation
+## Frontend architecture and verification
 
-`src/data.ts` loads the hashed raw JSON asset. `src/graph/adapter.ts` preserves
-occurrence identities; `catalog.ts` provides source grouping and literal search.
-`layout.ts` assigns fixed positions within the active scope. `navigation.ts` owns
-exact view snapshots, and `useAnimatedScene.ts` animates local changes over 600 ms.
-Tests cover fixture regressions and every real route's identity, discovery, layout,
-source fidelity and history. Browser behavior receives separate verification.
+`src/data.ts` loads the immutable scan asset. `graph/adapter.ts` constructs canonical
+nodes/aggregated evidence and complete occurrence trees. `catalog.ts` searches
+recorded fields. `layout.ts` computes a deterministic stopped D3 group layout once
+and uses fixed collision-free symbol slots; an append-only spatial allocator places
+new detail near its parent and reserves those anchors for the session. Allocations
+never move surviving nodes. `navigation.ts` owns view snapshots, and
+`useAnimatedScene.ts` retargets local node/edge motion over 600 ms.
+
+Tests independently traverse raw JSON to verify the exact symbol, call-pair and
+reference sets. They also cover source fidelity, same-name/ID distinctions,
+unresolved-parent boundaries, multiple open branches, collapse/history, pointer
+zoom, initial framing and fixed non-overlapping glyphs. Visual acceptance uses the
+actual production build and is documented separately by the behavior verifier.
 
 # Scanner
 

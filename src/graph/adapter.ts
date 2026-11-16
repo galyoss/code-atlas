@@ -1,151 +1,251 @@
-import type { AtlasGraph, Call, GraphDocument, GraphEdge, GraphNode, Route } from './types';
+import type {
+  AtlasGraph,
+  AuthStep,
+  Call,
+  EvidenceRef,
+  GraphDocument,
+  GraphEdge,
+  GraphNode,
+  Route,
+  SourceGroup,
+} from './types';
 
-// Call IDs are scoped by route even when a producer reuses a local call ID.
-export const callNodeId = (routeId: string, callId: string) => `call:${routeId}:${callId}`;
-export const routeNodeId = (routeId: string) => `route:${routeId}`;
-const shortName = (name: string) => name.split('.').at(-1) || name;
-const basename = (path: string) => path.split('/').at(-1) || path;
+// Tuple serialization keeps producer IDs distinct even if they contain separators.
+export const callNodeId = (
+  routeId: string,
+  callId: string,
+  authStepId?: string,
+) => `call:${JSON.stringify([routeId, authStepId ?? null, callId])}`;
+export const authNodeId = (routeId: string, stepId: string) =>
+  `auth:${JSON.stringify([routeId, stepId])}`;
+export const groupNodeId = (file: string) => `file:${file}`;
 
 export function adaptGraph(document: GraphDocument): AtlasGraph {
   const nodes = new Map<string, GraphNode>();
-  const baseIds: string[] = [];
   const edges: GraphEdge[] = [];
-  const edgeIds = new Set<string>();
-  const symbols = new Map(document.symbolIndex.map((symbol) => [symbol.id, symbol]));
-  const addBase = (node: GraphNode) => {
-    nodes.set(node.id, node);
-    baseIds.push(node.id);
-  };
-  const edge = (from: string, to: string, kind: GraphEdge['kind']) => {
-    const id = `${kind}:${from}:${to}`;
-    if (!edgeIds.has(id)) {
-      edgeIds.add(id);
-      edges.push({ id, from, to, kind });
-    }
-  };
-  function addCalls(calls: Call[], parent: GraphNode, route: Route) {
+  const pairs = new Map<string, GraphEdge>();
+  const groups = new Map<string, SourceGroup>();
+  const symbols = new Map(
+    document.symbolIndex.map((symbol) => [symbol.id, symbol]),
+  );
+  for (const symbol of document.symbolIndex) {
+    const file = symbol.range.file,
+      groupId = groupNodeId(file);
+    if (!groups.has(groupId))
+      groups.set(groupId, {
+        id: groupId,
+        file,
+        name: file.split('/').at(-1)!,
+        members: [],
+      });
+    groups.get(groupId)!.members.push(symbol.id);
+    nodes.set(symbol.id, {
+      id: symbol.id,
+      name: symbol.name,
+      subtitle: symbol.qualifiedName,
+      kind: 'symbol',
+      children: [],
+      groupId,
+      symbol,
+      range: symbol.range,
+      accesses: [],
+      authSteps: [],
+      canonical: true,
+    });
+  }
+  // Only the immediate resolved parent can establish a symbol-to-symbol call.
+  function aggregate(
+    parentSymbol: string | undefined,
+    call: Call,
+    ref: EvidenceRef,
+  ) {
+    if (
+      !parentSymbol ||
+      !symbols.has(parentSymbol) ||
+      call.resolution !== 'resolved' ||
+      !call.symbolId ||
+      !symbols.has(call.symbolId)
+    )
+      return;
+    const id = `pair:${JSON.stringify([parentSymbol, call.symbolId])}`;
+    if (!pairs.has(id))
+      pairs.set(id, {
+        id,
+        from: parentSymbol,
+        to: call.symbolId,
+        kind: 'call',
+        evidence: [],
+        aggregated: true,
+      });
+    pairs.get(id)!.evidence.push(ref);
+  }
+  function addCalls(
+    calls: Call[],
+    parent: GraphNode,
+    parentSymbol: string | undefined,
+    route: Route,
+    authStep?: AuthStep,
+  ) {
     for (const call of calls) {
+      const evidence: EvidenceRef = {
+        routeId: route.id,
+        callId: call.id,
+        ...(authStep ? { authStepId: authStep.id } : {}),
+      };
+      aggregate(parentSymbol, call, evidence);
       const accesses = route.dataAccesses
         .filter((access) => access.callId === call.id)
         .map((access) => ({ route, access }));
+      const resolvedSymbol =
+        call.resolution === 'resolved' && call.symbolId
+          ? symbols.get(call.symbolId)
+          : undefined;
       const node: GraphNode = {
-        id: callNodeId(route.id, call.id),
+        id: callNodeId(route.id, call.id, authStep?.id),
         name: call.calleeName,
-        subtitle:
+        subtitle: `${call.resolution} · ${call.callSite.file}:${call.callSite.startLine}`,
+        kind:
           call.resolution === 'ambiguous'
-            ? 'unresolved target'
+            ? 'gap'
             : accesses.length
-              ? accesses.map(({ access }) => `${access.operation} ${access.object.name}`).join(' · ')
-              : call.expanded === 'partial'
-                ? `partial · ${call.children.length} calls`
-                : call.resolution === 'external'
-                  ? 'external call'
-                  : basename(call.callSite.file),
-        kind: call.resolution === 'ambiguous' ? 'gap' : accesses.length ? 'data' : 'call',
-        call,
-        route,
+              ? 'data'
+              : 'call',
         parent: parent.id,
+        groupId: parent.groupId,
+        route,
+        call,
         children: [],
+        evidence,
+        range: call.callSite,
+        symbol: resolvedSymbol,
         accesses,
         authSteps: [],
-        range: call.callSite,
-        symbol: call.symbolId ? symbols.get(call.symbolId) : undefined,
       };
       nodes.set(node.id, node);
       parent.children.push(node.id);
-      edge(parent.id, node.id, node.kind === 'gap' ? 'unresolved' : 'call');
-      addCalls(call.children, node, route);
+      edges.push({
+        id: `occurrence:${node.id}`,
+        from: parent.id,
+        to: node.id,
+        kind: node.kind === 'gap' ? 'unresolved' : 'call',
+        evidence: [evidence],
+      });
+      if (resolvedSymbol)
+        edges.push({
+          id: `definition:${node.id}`,
+          from: node.id,
+          to: resolvedSymbol.id,
+          kind: 'definition',
+          evidence: [evidence],
+        });
+      addCalls(call.children, node, resolvedSymbol?.id, route, authStep);
     }
   }
   for (const route of document.routes) {
-    const node: GraphNode = {
-      id: routeNodeId(route.id),
-      name: shortName(route.handler.qualifiedName),
-      subtitle: `${route.httpMethod} ${route.pathTemplate}`,
-      kind: 'route',
-      children: [],
-      route,
-      symbol: symbols.get(route.handler.symbolId),
-      range: route.handler.range,
+    const handler = nodes.get(route.handler.symbolId);
+    if (!handler)
+      throw new Error(`Missing handler symbol: ${route.handler.symbolId}`);
+    handler.kind = 'route';
+    handler.route ??= route;
+    handler.groupedRoutes = [...(handler.groupedRoutes || []), route];
+    addCalls(route.callGraph, handler, handler.id, route);
+    for (const step of route.authChain) {
+      const id = authNodeId(route.id, step.id);
+      const node: GraphNode = {
+        id,
+        name: step.qualifiedName.split('.').at(-1)!,
+        subtitle: `${step.kind} · ${step.mechanism}`,
+        kind: 'auth',
+        parent: handler.id,
+        groupId: handler.groupId,
+        route,
+        children: [],
+        symbol: step.symbolId ? symbols.get(step.symbolId) : undefined,
+        range: step.range,
+        accesses: [],
+        authSteps: [{ route, step }],
+      };
+      nodes.set(id, node);
+      handler.children.push(id);
+      edges.push({
+        id: `context:${id}`,
+        from: handler.id,
+        to: id,
+        kind: 'context',
+        evidence: [],
+      });
+      if (node.symbol) {
+        nodes.get(node.symbol.id)!.authSteps.push({ route, step });
+        edges.push({
+          id: `definition:${id}`,
+          from: id,
+          to: node.symbol.id,
+          kind: 'definition',
+          evidence: [],
+        });
+      }
+      addCalls(step.calls, node, step.symbolId, route, step);
+    }
+  }
+  for (const group of groups.values())
+    nodes.set(group.id, {
+      id: group.id,
+      name: group.name,
+      subtitle: group.file,
+      sourceFile: group.file,
+      kind: 'group',
+      children: group.members,
       accesses: [],
       authSteps: [],
-    };
-    addBase(node);
-    for (const step of route.authChain.filter((item) => item.mechanism !== 'inline')) {
-      const id = `auth:${step.symbolId || `${route.id}:${step.id}`}`;
-      if (!nodes.has(id))
-        addBase({
-          id,
-          name: shortName(step.qualifiedName),
-          subtitle: 'auth context · collapsed',
-          kind: 'auth',
-          children: [],
-          range: step.range,
-          symbol: step.symbolId ? symbols.get(step.symbolId) : undefined,
-          accesses: [],
-          authSteps: [],
-        });
-      nodes.get(id)!.authSteps.push({ route, step });
-      edge(node.id, id, 'context');
-    }
-    for (const access of route.dataAccesses) {
-      const id = `model:${access.object.symbolId || `${access.object.store}:${access.object.name}`}`;
-      if (!nodes.has(id))
-        addBase({
-          id,
-          name: access.object.name,
-          subtitle: 'data summary',
-          kind: 'model',
-          children: [],
-          accesses: [],
-          authSteps: [],
-          symbol: access.object.symbolId ? symbols.get(access.object.symbolId) : undefined,
-        });
-      nodes.get(id)!.accesses.push({ route, access });
-      edge(node.id, id, 'summary');
-    }
-    addCalls(route.callGraph, node, route);
-  }
+    });
   return {
     document,
     nodes,
-    baseIds,
-    edges,
-    defaultId: routeNodeId(document.routes[0].id),
+    groups: [...groups.values()],
+    baseIds: document.symbolIndex.map((symbol) => symbol.id),
+    edges: [...pairs.values(), ...edges],
+    defaultId: document.routes[0].handler.symbolId,
   };
 }
 
-export function ancestors(graph: AtlasGraph, id: string): string[] {
-  const result: string[] = [];
-  let node = graph.nodes.get(id);
-  while (node) {
-    result.unshift(node.id);
-    node = node.parent ? graph.nodes.get(node.parent) : undefined;
+export function visibleIds(
+  graph: AtlasGraph,
+  expanded: ReadonlySet<string>,
+  collapsed: ReadonlySet<string>,
+): Set<string> {
+  const visible = new Set(graph.groups.map((group) => group.id));
+  function visit(id: string) {
+    visible.add(id);
+    if (expanded.has(id)) graph.nodes.get(id)!.children.forEach(visit);
   }
-  return result;
+  for (const id of graph.baseIds)
+    if (!collapsed.has(graph.nodes.get(id)!.groupId!)) visit(id);
+  return visible;
 }
 
-export function visibleIds(graph: AtlasGraph, path: string[]): Set<string> {
-  return new Set([...graph.baseIds, ...path.flatMap((id) => graph.nodes.get(id)?.children || [])]);
-}
-
-/** Keep occurrence identities and evidence intact while limiting the canvas to one route. */
-export function routeGraph(graph: AtlasGraph, routeId: string): AtlasGraph {
-  const route = graph.nodes.get(routeId)?.route;
-  if (!route || graph.nodes.get(routeId)?.kind !== 'route') throw new Error('Unknown route');
-  const baseIds = [
-    routeId,
-    ...graph.edges
-      .filter((edge) => edge.from === routeId && (edge.kind === 'summary' || edge.kind === 'context'))
-      .map((edge) => edge.to),
-  ];
-  const base = new Set(baseIds);
-  const nodes = new Map([...graph.nodes].filter(([id, node]) => base.has(id) || node.route?.id === route.id));
-  return {
-    ...graph,
-    nodes,
-    baseIds,
-    defaultId: routeId,
-    edges: graph.edges.filter((edge) => nodes.has(edge.from) && nodes.has(edge.to)),
+/** Collapsed files keep their real boundary connections and the original evidence. */
+export function visibleEdges(
+  graph: AtlasGraph,
+  visible: ReadonlySet<string>,
+  collapsed: ReadonlySet<string>,
+): GraphEdge[] {
+  const endpoint = (id: string) => {
+    const node = graph.nodes.get(id)!;
+    return node.canonical &&
+      !visible.has(id) &&
+      (collapsed.has(node.groupId!) || visible.has(node.groupId!))
+      ? node.groupId!
+      : id;
   };
+  return graph.edges.flatMap((edge) => {
+    const from = endpoint(edge.from),
+      to = endpoint(edge.to);
+    if (
+      !visible.has(from) ||
+      !visible.has(to) ||
+      (from === to && edge.from !== edge.to)
+    )
+      return [];
+    return [{ ...edge, from, to }];
+  });
 }
