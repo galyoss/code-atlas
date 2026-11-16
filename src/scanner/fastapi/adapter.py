@@ -15,6 +15,7 @@ from scanner.project import Project
 
 class FastAPIAdapter:
     framework = "fastapi"
+    frontend = "python"
 
     def __init__(self) -> None:
         self.notes: list[str] = []

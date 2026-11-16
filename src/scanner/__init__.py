@@ -1,7 +1,7 @@
 """Code scanner for the code-graph schema.
 
-v1 reads FastAPI through `FastAPIAdapter`. The schema writer does not
-depend on that adapter.
+FastAPI, Express, and Rails each have an adapter. The schema writer does
+not import one.
 """
 
 __version__ = "1.0.0"

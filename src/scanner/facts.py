@@ -153,6 +153,7 @@ class RouteFact:
     handler_file: str
     handler_start: int
     handler_end: int
+    registration_mechanism: str = "decorator"
     entry_params: list[EntryParamFact] = field(default_factory=list)
     bindings: list[BindingFact] = field(default_factory=list)
     auth_steps: list[AuthStepFact] = field(default_factory=list)
