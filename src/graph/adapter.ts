@@ -10,6 +10,7 @@ export function adaptGraph(document: GraphDocument): AtlasGraph {
   const nodes = new Map<string, GraphNode>();
   const baseIds: string[] = [];
   const edges: GraphEdge[] = [];
+  const edgeIds = new Set<string>();
   const symbols = new Map(document.symbolIndex.map((symbol) => [symbol.id, symbol]));
   const addBase = (node: GraphNode) => {
     nodes.set(node.id, node);
@@ -17,7 +18,10 @@ export function adaptGraph(document: GraphDocument): AtlasGraph {
   };
   const edge = (from: string, to: string, kind: GraphEdge['kind']) => {
     const id = `${kind}:${from}:${to}`;
-    if (!edges.some((item) => item.id === id)) edges.push({ id, from, to, kind });
+    if (!edgeIds.has(id)) {
+      edgeIds.add(id);
+      edges.push({ id, from, to, kind });
+    }
   };
   function addCalls(calls: Call[], parent: GraphNode, route: Route) {
     for (const call of calls) {
@@ -102,7 +106,13 @@ export function adaptGraph(document: GraphDocument): AtlasGraph {
     }
     addCalls(route.callGraph, node, route);
   }
-  return { document, nodes, baseIds, edges, defaultId: routeNodeId(document.routes[0].id) };
+  return {
+    document,
+    nodes,
+    baseIds,
+    edges,
+    defaultId: routeNodeId(document.routes[0].id),
+  };
 }
 
 export function ancestors(graph: AtlasGraph, id: string): string[] {
@@ -117,4 +127,25 @@ export function ancestors(graph: AtlasGraph, id: string): string[] {
 
 export function visibleIds(graph: AtlasGraph, path: string[]): Set<string> {
   return new Set([...graph.baseIds, ...path.flatMap((id) => graph.nodes.get(id)?.children || [])]);
+}
+
+/** Keep occurrence identities and evidence intact while limiting the canvas to one route. */
+export function routeGraph(graph: AtlasGraph, routeId: string): AtlasGraph {
+  const route = graph.nodes.get(routeId)?.route;
+  if (!route || graph.nodes.get(routeId)?.kind !== 'route') throw new Error('Unknown route');
+  const baseIds = [
+    routeId,
+    ...graph.edges
+      .filter((edge) => edge.from === routeId && (edge.kind === 'summary' || edge.kind === 'context'))
+      .map((edge) => edge.to),
+  ];
+  const base = new Set(baseIds);
+  const nodes = new Map([...graph.nodes].filter(([id, node]) => base.has(id) || node.route?.id === route.id));
+  return {
+    ...graph,
+    nodes,
+    baseIds,
+    defaultId: routeId,
+    edges: graph.edges.filter((edge) => nodes.has(edge.from) && nodes.has(edge.to)),
+  };
 }

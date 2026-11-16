@@ -5,36 +5,48 @@ export const NODE_HEIGHT = 64;
 const COLUMN_GAP = 306;
 const CALL_PITCH = 112;
 
-/** Fixed world coordinates depend only on the fixture, never on navigation or zoom. */
+/** Sibling lanes are bounded vertically. Descendants start beyond the full sibling block.
+ * Only one branch opens per depth, so every simultaneously visible node has its own slot.
+ * Coordinates depend on recorded structure, never expansion, selection or camera. */
 export function layoutGraph(graph: AtlasGraph): Map<string, Point> {
   const positions = new Map<string, Point>();
-  const ofKind = (kind: string) => graph.baseIds.filter((id) => graph.nodes.get(id)!.kind === kind);
-  const routes = ofKind('route');
-  const auth = ofKind('auth');
-  const models = ofKind('model');
-  const height = Math.max(640, routes.length * 300, models.length * 200);
-  const distribute = (ids: string[], x: number, start: number, end: number) =>
-    ids.forEach((id, i) =>
+  if (graph.nodes.get(graph.defaultId)?.kind === 'repository') {
+    const groups = graph.baseIds.filter((id) => id !== graph.defaultId);
+    positions.set(graph.defaultId, { x: 496, y: 0 });
+    groups.forEach((id, i) =>
       positions.set(id, {
-        x,
-        y: ids.length === 1 ? (start + end) / 2 : start + (i * (end - start)) / (ids.length - 1),
+        x: 190 + (i % 3) * COLUMN_GAP,
+        y: 130 + Math.floor(i / 3) * 110,
       }),
     );
-  auth.forEach((id, i) => positions.set(id, { x: 130 + i * COLUMN_GAP, y: 42 }));
-  distribute(routes, 190, 230, height - 110);
-  distribute(models, 1020, 140, height - 70);
-  function placeChildren(id: string) {
+    return positions;
+  }
+  const ofKind = (kind: string) => graph.baseIds.filter((id) => graph.nodes.get(id)!.kind === kind);
+  const routes = ofKind('route');
+  const context = graph.baseIds.filter((id) => graph.nodes.get(id)!.kind !== 'route');
+  context.forEach((id, i) =>
+    positions.set(id, {
+      x: 190 - (1 + Math.floor(i / 6)) * COLUMN_GAP,
+      y: 230 + ((i % 6) - (Math.min(context.length, 6) - 1) / 2) * CALL_PITCH,
+    }),
+  );
+  function placeChildren(id: string, startX: number) {
     const parent = positions.get(id)!;
     const children = graph.nodes.get(id)!.children;
+    const rows = Math.min(children.length, 6);
+    const nextX = startX + Math.ceil(children.length / 6) * COLUMN_GAP;
     children.forEach((child, index) => {
       positions.set(child, {
-        x: parent.x + COLUMN_GAP,
-        y: parent.y + (index - (children.length - 1) / 2) * CALL_PITCH,
+        x: startX + Math.floor(index / 6) * COLUMN_GAP,
+        y: parent.y + ((index % 6) - (rows - 1) / 2) * CALL_PITCH,
       });
-      placeChildren(child);
+      placeChildren(child, nextX);
     });
   }
-  routes.forEach(placeChildren);
+  routes.forEach((id, i) => {
+    positions.set(id, { x: 190, y: 230 + i * 800 });
+    placeChildren(id, 190 + COLUMN_GAP);
+  });
   return positions;
 }
 
@@ -69,7 +81,11 @@ export function fitCamera(
   const minY = Math.min(...points.map((p) => p.y));
   const maxY = Math.max(...points.map((p) => p.y)) + NODE_HEIGHT;
   const scale = Math.max(0.45, Math.min(1.1, (width - 100) / (maxX - minX), (height - 100) / (maxY - minY)));
-  return { scale, x: (width - (maxX + minX) * scale) / 2, y: (height - (maxY + minY) * scale) / 2 };
+  return {
+    scale,
+    x: (width - (maxX + minX) * scale) / 2,
+    y: (height - (maxY + minY) * scale) / 2,
+  };
 }
 
 export function zoomCamera(camera: Camera, factor: number, center: Point): Camera {

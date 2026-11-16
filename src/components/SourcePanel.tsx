@@ -1,5 +1,6 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { X } from 'lucide-react';
+import { scan } from '../data';
 import type {
   AtlasGraph,
   AuthStep,
@@ -20,7 +21,7 @@ function Excerpt({ snippet, label = 'Source excerpt' }: { snippet?: Snippet; lab
       <pre>
         <code>{snippet.text}</code>
       </pre>
-      {snippet.truncated && <p className="muted-note">Excerpt truncated in the fixture.</p>}
+      {snippet.truncated && <p className="muted-note">Excerpt truncated in the scan document.</p>}
     </section>
   ) : null;
 }
@@ -107,34 +108,56 @@ function ScopeEvidence({ graph }: { graph: AtlasGraph }) {
     <>
       <p>{document.note}</p>
       <p>
-        {document.routes.length} route slices are included. They do not represent the whole repository. No
-        security findings are supplied.
+        {document.routes.length} FastAPI route slices and {document.symbolIndex.length} indexed symbols are
+        included. This static scan includes example code; it does not establish which endpoints are deployed.
+        Coverage is route-oriented, not a complete repository call graph. No security review agents ran and no
+        findings are supplied.
       </p>
       <dl>
         <dt>Repository</dt>
-        <dd>{document.repo.name}</dd>
+        <dd>
+          {scan.name} · {scan.tag}
+        </dd>
         <dt>Revision</dt>
         <dd>{document.repo.revision}</dd>
         <dt>Frameworks</dt>
         <dd>{document.frameworks.join(', ')}</dd>
         <dt>Schema</dt>
         <dd>{document.schemaVersion}</dd>
+        <dt>Generated (UTC)</dt>
+        <dd>{document.generatedAt}</dd>
+        <dt>Scanner revision</dt>
+        <dd>{scan.provenance.scannerRevision}</dd>
+        <dt>Joern / Java</dt>
+        <dd>
+          {scan.provenance.joernVersion} / {scan.provenance.javaVersion}
+        </dd>
+        <dt>Document SHA-256</dt>
+        <dd>{scan.provenance.sha256}</dd>
       </dl>
-      {document.routes.map((route) => (
-        <section className="evidence-block" key={route.id}>
-          <h3>
-            {route.httpMethod} {route.pathTemplate}
-          </h3>
-          <dl>
-            <dt>Auth chain</dt>
-            <dd>{route.budget.coverage.authChain}</dd>
-            <dt>Call graph</dt>
-            <dd>{route.budget.coverage.callGraph}</dd>
-            <dt>Data flow</dt>
-            <dd>{route.budget.coverage.dataFlow}</dd>
-          </dl>
-        </section>
-      ))}
+      <p>
+        <a href={scan.graphUrl} download="aegra-v0.11.0.graph.json">
+          Download the unchanged scan document
+        </a>
+      </p>
+      <details>
+        <summary>Coverage for all {document.routes.length} routes</summary>
+        {document.routes.map((route) => (
+          <section className="evidence-block" key={route.id}>
+            <h3>
+              {route.httpMethod} {route.pathTemplate}
+            </h3>
+            <dl>
+              <dt>Auth chain</dt>
+              <dd>{route.budget.coverage.authChain}</dd>
+              <dt>Call graph</dt>
+              <dd>{route.budget.coverage.callGraph}</dd>
+              <dt>Data flow</dt>
+              <dd>{route.budget.coverage.dataFlow}</dd>
+            </dl>
+          </section>
+        ))}
+      </details>
       <section className="evidence-block">
         <h3>Known gaps</h3>
         {document.unresolvedGaps.map((gap) => (
@@ -204,7 +227,7 @@ export function SourcePanel({ graph, node, mode, onClose, returnFocus }: Props) 
         <X size={17} />
       </button>
       <div className="eyebrow">{mode === 'scope' ? 'Graph scope' : 'Source evidence'}</div>
-      <h2 id="source-title">{mode === 'scope' ? graph.document.repo.name : node.name}</h2>
+      <h2 id="source-title">{mode === 'scope' ? `${scan.name} · real scan` : node.name}</h2>
       {mode === 'scope' ? (
         <ScopeEvidence graph={graph} />
       ) : (
@@ -261,7 +284,7 @@ export function SourcePanel({ graph, node, mode, onClose, returnFocus }: Props) 
                 </p>
               )}
               {node.call.expanded === 'no' && node.call.resolution === 'resolved' && (
-                <p className="coverage-note">This call was not expanded in the fixture.</p>
+                <p className="coverage-note">This call was not expanded in the scan document.</p>
               )}
             </>
           )}
@@ -337,7 +360,9 @@ export function SourcePanel({ graph, node, mode, onClose, returnFocus }: Props) 
               )}
             </section>
           )}
-          <p className="panel-footnote">Hand-authored example · not a scanner result or a finding.</p>
+          <p className="panel-footnote">
+            Real Joern scan · partial static analysis · no agent security review.
+          </p>
         </>
       )}
     </aside>

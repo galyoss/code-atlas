@@ -1,10 +1,11 @@
 # CodeAtlas
 
-A full-window code graph for exploring route handlers, their recorded calls, and
-source evidence. The app currently opens two bundled, hand-authored examples;
-Aegra is selected by default.
+A full-window code graph for exploring route handlers, recorded calls and source
+evidence. The default app opens a **real Joern scan of Aegra v0.11.0**:
+59 routes, 213 indexed symbols, and 9 source files at revision `46055c0`.
+The unchanged scan document and its provenance are in [`docs/scans`](docs/scans/README.md).
 
-## Run locally
+## Run the app locally
 
 Use Node.js 22.12 or newer (verified with Node 22.18 and npm 10.9).
 
@@ -13,11 +14,10 @@ npm ci
 npm run dev -- --host 127.0.0.1
 ```
 
-The committed lockfile supports `npm ci` with npm 10.9. Dependency refreshes were
-performed with npm 11.6.2 to avoid an npm 10 optional-peer resolution bug.
-
-Open the URL printed by Vite. No account, backend, external API, or CDN is needed.
-Fonts and icons are bundled with the app.
+Open Vite's URL, normally <http://127.0.0.1:5173>. No account, backend, external
+API or CDN is needed; fonts, icons and the scan asset are served locally. The
+committed lockfile supports npm 10.9; dependency refreshes used npm 11.6.2 to avoid
+an npm 10 optional-peer resolution bug.
 
 ```sh
 npm run typecheck
@@ -26,61 +26,56 @@ npm run build
 npm run preview -- --host 127.0.0.1
 ```
 
-The build emits `dist/index.html` and hashed assets. Preview normally serves at
-<http://127.0.0.1:4173>. `dist/` is generated and ignored. A static host can serve the
-contents of `dist/`; this repository does not configure a deployment.
+The production build is served at <http://127.0.0.1:4173>. `dist/` is generated and
+ignored. This repository does not configure a frontend deployment.
 
-## Explore
+## Explore the real scan
 
-The initial view keeps labels readable. When the full overview would be too small,
-it starts around the selected route; the canvas indicates when nodes are offscreen.
-
-- Click a node to select it. Its **+** button or **Open calls** reveals only direct
-  recorded calls. One deeper branch stays open, with ancestors and context retained.
-- Drag the canvas to pan. Focus the canvas and use arrow keys to pan by keyboard.
-  Zoom controls (or `+` / `-` while the canvas is focused) change magnification only.
-- **Bring selection into view** and **Fit visible graph** move the camera explicitly.
-  Expansion leaves existing world positions and the camera unchanged.
-- **Back** restores the previous selection, expanded path, pan, and zoom.
-  Breadcrumbs return to saved ancestor views; collapse closes a local branch.
-- **Source** opens one closeable evidence panel. Escape closes it, or goes Back
-  when no panel is open. **Hand-authored example** opens coverage and scope details.
-- The repository selector starts a fresh exploration of the other fixture.
+- The opening graph groups all routes by source file. Its containment lines are
+  labeled **Source grouping**, distinct from call edges. The three routes in
+  `examples/custom_routes_example.py` remain visibly identified as example code.
+- Select a source file and **Browse routes**, or use **Routes 59** from any view.
+  The directory searches literal terms across names, paths, HTTP methods and files.
+  Select a handler to focus its route slice. The toolbar identifies that scope.
+- Select a graph node, then use its **+** button or **Open calls** for direct recorded
+  calls. One deeper branch stays open; ancestors and relevant context remain.
+  Dense direct-call sets occupy bounded rows across columns instead of a tall stack.
+- Drag or use arrow keys on the focused canvas to pan. Zoom controls and `+` / `-`
+  change magnification only. **Bring selection into view** and **Fit visible graph**
+  move the camera explicitly. Expansion preserves anchors and camera.
+- **Back** restores selection, expanded path, scope, pan and zoom, including route
+  changes. **All routes** returns to the saved source-file overview.
+- **Source** shows the recorded ranges, snippets, resolution and coverage. **Real
+  scan · scope & coverage** shows provenance and known gaps. Escape closes a panel
+  or goes Back. Reduced-motion preferences remove expansion animation.
 
 ## Data boundaries
 
-The unchanged sources are [`docs/code-graph-example-aegra.json`](docs/code-graph-example-aegra.json)
-and [`docs/code-graph-example.json`](docs/code-graph-example.json), conforming to
-[schema v1.0.0](docs/code-graph-schema.json). Neither is a scanner result or a set of
-security findings. Each contains two route slices, not a whole repository graph.
-Aegra includes partial expansion and unresolved runtime dispatch; Papertrail is a
-synthetic example with complete coverage only within its included slices.
+The scan is route-oriented static analysis, not a deployed-endpoint inventory or
+a complete repository call graph. It reports 55 partially covered routes and 4
+complete within their slices. Dynamic dispatch, depth/cycle/snippet budgets and
+unsupported GraphQL/WebSocket/framework behavior remain recorded gaps. No security
+review agents ran; the graph contains no vulnerability findings.
 
-Solid mint arrows are recorded calls. Gold lines summarize route/data relationships;
-dashed lines mark authentication context or unresolved calls. Positions do not claim
-execution order. Call occurrences remain distinct by route and call ID, even when
-they reference the same symbol. Data objects and shared auth definitions aggregate
-only as summary/context nodes. Shared auth internals intentionally remain collapsed
-in this handler-call explorer. Source snippets, inline checks, resolution, and
-coverage are displayed from the documents, without inferring findings.
+There are 3,650 handler-call occurrences plus 1,936 authentication-call occurrences.
+The canvas explores handler calls; shared authentication internals remain collapsed.
+Call identities stay distinct by route and call ID. Gold edges are data summaries;
+dashed edges are auth context or unresolved targets. Positions do not establish
+execution order. Source evidence is rendered as text without inferring findings.
 
-## Implementation and future scanner integration
+The original [`Aegra`](docs/code-graph-example-aegra.json) and
+[`Papertrail`](docs/code-graph-example.json) examples and schema are unchanged. They
+remain test/reference fixtures, not selectable product data. A missing or invalid
+real asset produces an explicit error instead of falling back to an example.
 
-- `src/data.ts` imports the two source documents directly.
-- `src/graph/adapter.ts` maps schema records to route-specific occurrence identities.
-- `src/graph/layout.ts` computes deterministic world positions once per dataset.
-- `src/graph/navigation.ts` owns branch navigation and exact view snapshots.
-- `src/hooks/useAnimatedScene.ts` retargets 600 ms local expansion/collapse animation;
-  reduced-motion preferences remove it. Edges use the same animated node positions.
-- `src/components/` renders the canvas and evidence panel. React renders source as text.
+## Frontend implementation
 
-A future scanner should supply a validated schema document at the `adaptGraph`
-boundary instead of the bundled imports. Authentication, scan submission, persisted
-reports, findings, and large-repository layout/performance are separate work. The
-current layout is designed for bounded route slices, not arbitrary full-repository
-scale. Focused tests cover fixture identity, edge provenance, direct expansion,
-branch switching, stale selections, camera isolation, and history restoration;
-production browser interaction still needs separate verification.
+`src/data.ts` loads the hashed raw JSON asset. `src/graph/adapter.ts` preserves
+occurrence identities; `catalog.ts` provides source grouping and literal search.
+`layout.ts` assigns fixed positions within the active scope. `navigation.ts` owns
+exact view snapshots, and `useAnimatedScene.ts` animates local changes over 600 ms.
+Tests cover fixture regressions and every real route's identity, discovery, layout,
+source fidelity and history. Browser behavior receives separate verification.
 
 # Scanner
 

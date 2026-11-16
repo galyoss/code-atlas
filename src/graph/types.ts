@@ -89,9 +89,14 @@ export interface GraphDocument {
   generatedAt: string;
   symbolIndex: SymbolDefinition[];
   routes: Route[];
-  unresolvedGaps: { id: string; kind: string; support: string; detail: string }[];
+  unresolvedGaps: {
+    id: string;
+    kind: string;
+    support: string;
+    detail: string;
+  }[];
 }
-export type NodeKind = 'route' | 'auth' | 'model' | 'call' | 'data' | 'gap';
+export type NodeKind = 'route' | 'auth' | 'model' | 'call' | 'data' | 'gap' | 'repository' | 'group';
 export interface GraphNode {
   id: string;
   name: string;
@@ -105,12 +110,14 @@ export interface GraphNode {
   range?: SourceRange;
   accesses: { route: Route; access: DataAccess }[];
   authSteps: { route: Route; step: AuthStep }[];
+  groupedRoutes?: Route[];
+  sourceFile?: string;
 }
 export interface GraphEdge {
   id: string;
   from: string;
   to: string;
-  kind: 'summary' | 'context' | 'call' | 'unresolved';
+  kind: 'summary' | 'context' | 'call' | 'unresolved' | 'contains';
 }
 export interface AtlasGraph {
   document: GraphDocument;

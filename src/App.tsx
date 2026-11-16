@@ -1,72 +1,146 @@
-import { Fragment, useCallback, useMemo, useReducer, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, Code2, Orbit } from 'lucide-react';
-import { datasets, type DatasetId } from './data';
-import { visibleIds } from './graph/adapter';
-import { layoutGraph } from './graph/layout';
-import { initialNavigation, navigate, type NavigationAction } from './graph/navigation';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
+import { ArrowLeft, ArrowRight, ChevronRight, Code2, ListFilter, Orbit } from 'lucide-react';
+import { loadScan, scan } from './data';
+import { routeGraph, visibleIds } from './graph/adapter';
+import { overviewGraph, routeGroups } from './graph/catalog';
+import { initialCamera, layoutGraph } from './graph/layout';
+import { initialNavigation, navigate } from './graph/navigation';
+import type { AtlasGraph } from './graph/types';
 import { GraphCanvas } from './components/GraphCanvas';
 import { SourcePanel } from './components/SourcePanel';
+import { RouteDirectory } from './components/RouteDirectory';
 
 export default function App() {
-  const [dataset, setDataset] = useState<DatasetId>('aegra');
-  return <AtlasWorkspace key={dataset} dataset={dataset} setDataset={setDataset} />;
+  const [graph, setGraph] = useState<AtlasGraph | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    loadScan(controller.signal)
+      .then(setGraph)
+      .catch((error: Error) => {
+        if (!controller.signal.aborted) setError(error.message);
+      });
+    return () => controller.abort();
+  }, []);
+  if (!graph)
+    return (
+      <main className="scan-loading" role="status">
+        <Orbit size={32} />
+        <h1>{error ? 'The scan could not be opened.' : 'Opening the Aegra scan…'}</h1>
+        <p>{error || 'Loading recorded routes and source evidence.'}</p>
+        {error && (
+          <button className="secondary-button" onClick={() => window.location.reload()}>
+            Try again
+          </button>
+        )}
+      </main>
+    );
+  return <AtlasWorkspace graph={graph} />;
 }
-function AtlasWorkspace({
-  dataset,
-  setDataset,
-}: {
-  dataset: DatasetId;
-  setDataset: (id: DatasetId) => void;
-}) {
-  const graph = datasets[dataset];
-  const [state, rawDispatch] = useReducer(
-    (state: ReturnType<typeof initialNavigation>, action: NavigationAction) => navigate(graph, state, action),
+
+function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
+  const [state, dispatch] = useReducer(
+    (state: ReturnType<typeof initialNavigation>, action: Parameters<typeof navigate>[2]) =>
+      navigate(graph, state, action),
     graph,
-    initialNavigation,
+    (graph) => initialNavigation(graph, null),
   );
   const [panel, setPanel] = useState<'source' | 'scope' | null>(null);
+  const [directory, setDirectory] = useState<{ file?: string } | null>(null);
   const sourceButton = useRef<HTMLButtonElement>(null);
   const scopeButton = useRef<HTMLButtonElement>(null);
-  const dispatch = useCallback((action: NavigationAction) => {
-    rawDispatch(action);
-  }, []);
-  const positions = useMemo(() => layoutGraph(graph), [graph]);
-  const visible = useMemo(() => visibleIds(graph, state.path), [graph, state.path]);
-  const selected = graph.nodes.get(state.selected)!;
-  const isOpen = state.path.includes(selected.id);
-  const partial = graph.document.routes.some((route) =>
-    Object.values(route.budget.coverage).some((coverage) => coverage !== 'complete'),
+  const routesButton = useRef<HTMLButtonElement>(null);
+  const canvasArea = useRef<HTMLDivElement>(null);
+  const overview = useMemo(() => overviewGraph(graph, scan.name), [graph]);
+  const groups = useMemo(() => routeGroups(graph.document), [graph]);
+  const scene = useMemo(
+    () => (state.scope ? routeGraph(graph, state.scope) : overview),
+    [graph, overview, state.scope],
   );
-  function toggle(id: string) {
+  const positions = useMemo(() => layoutGraph(scene), [scene]);
+  const visible = useMemo(() => visibleIds(scene, state.path), [scene, state.path]);
+  const selected = scene.nodes.get(state.selected)!;
+  const isOpen = state.path.includes(selected.id);
+  const partialRoutes = graph.document.routes.filter((route) =>
+    Object.values(route.budget.coverage).some((coverage) => coverage !== 'complete'),
+  ).length;
+  const isOverview = state.scope === null;
+  useLayoutEffect(() => {
+    const element = canvasArea.current!;
+    dispatch({
+      type: 'camera',
+      camera: initialCamera(layoutGraph(overview), overview, element.clientWidth, element.clientHeight),
+    });
+  }, [overview]);
+  const closePanels = useCallback(() => {
     setPanel(null);
+    setDirectory(null);
+  }, []);
+  function browse(file?: string) {
+    setPanel(null);
+    setDirectory({ file });
+  }
+  function chooseRoute(id: string) {
+    closePanels();
+    const next = routeGraph(graph, id);
+    const element = canvasArea.current!;
+    dispatch({
+      type: 'focus-route',
+      id,
+      camera: initialCamera(layoutGraph(next), next, element.clientWidth, element.clientHeight),
+    });
+  }
+  function toggle(id: string) {
+    const node = scene.nodes.get(id)!;
+    if (node.groupedRoutes) {
+      browse(node.sourceFile);
+      return;
+    }
+    closePanels();
     dispatch({ type: state.path.includes(id) ? 'collapse' : 'expand', id });
   }
   function back() {
-    setPanel(null);
+    closePanels();
     dispatch({ type: 'back' });
   }
-  const actionLabel = selected.children.length
-    ? isOpen
-      ? 'Collapse calls'
-      : `Open ${selected.children.length} calls`
-    : selected.kind === 'gap'
-      ? 'Unresolved target'
-      : selected.kind === 'auth'
-        ? 'Auth context'
-        : selected.kind === 'model'
-          ? 'Data summary'
-          : selected.call?.expanded === 'no'
-            ? 'No recorded children'
-            : 'No further calls';
+  function showOverview() {
+    closePanels();
+    dispatch({ type: 'overview' });
+  }
+  const actionLabel = selected.groupedRoutes
+    ? `Browse ${selected.groupedRoutes.length} routes`
+    : selected.children.length
+      ? isOpen
+        ? 'Collapse calls'
+        : `Open ${selected.children.length} calls`
+      : selected.kind === 'gap'
+        ? 'Unresolved target'
+        : selected.kind === 'auth'
+          ? 'Auth context'
+          : selected.kind === 'model'
+            ? 'Data summary'
+            : selected.call?.expanded === 'no'
+              ? 'No recorded children'
+              : 'No further calls';
   return (
     <main
       className="atlas-app"
-      data-dataset={dataset}
+      data-dataset="aegra-real"
       data-selected={state.selected}
+      data-scope={state.scope || 'overview'}
       data-path={state.path.join('/')}
       onKeyDown={(event) => {
         if (event.key === 'Escape' && !event.defaultPrevented) {
-          if (panel) setPanel(null);
+          if (panel || directory) closePanels();
           else back();
         }
       }}
@@ -77,8 +151,7 @@ function AtlasWorkspace({
           href="#"
           onClick={(event) => {
             event.preventDefault();
-            setPanel(null);
-            dispatch({ type: 'breadcrumb', depth: 0 });
+            showOverview();
           }}
           aria-label="CodeAtlas, all routes"
         >
@@ -86,27 +159,11 @@ function AtlasWorkspace({
           <span>CodeAtlas</span>
         </a>
         <span className="active-tab">Code graph</span>
-        <div className="repository-select">
-          <label className="sr-only" htmlFor="repository">
-            Repository example
-          </label>
-          <select
-            id="repository"
-            value={dataset}
-            onChange={(event) => setDataset(event.target.value as DatasetId)}
-          >
-            {Object.entries(datasets).map(([id, item]) => (
-              <option key={id} value={id}>
-                {item.document.repo.name}
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={13} aria-hidden="true" />
-        </div>
+        <span className="repository-name">
+          {scan.name} <small>{scan.tag}</small>
+        </span>
         <span className="revision" title={graph.document.repo.revision}>
-          {graph.document.repo.revision === 'illustrative'
-            ? 'illustrative'
-            : graph.document.repo.revision.slice(0, 7)}
+          {graph.document.repo.revision.slice(0, 7)}
         </span>
         <span className="header-label">ATLAS</span>
       </header>
@@ -121,51 +178,84 @@ function AtlasWorkspace({
           <ArrowLeft size={17} />
         </button>
         <nav className="breadcrumbs" aria-label="Graph exploration path">
-          <button
-            onClick={() => {
-              setPanel(null);
-              dispatch({ type: 'breadcrumb', depth: 0 });
-            }}
-            aria-current={!state.path.length ? 'page' : undefined}
-          >
+          <button onClick={showOverview} aria-current={isOverview ? 'page' : undefined}>
             All routes
           </button>
-          {state.path.map((id, index) => (
-            <Fragment key={id}>
-              <ChevronRight size={12} aria-hidden="true" />
+          {!isOverview && (
+            <>
+              <ChevronRight size={12} />
               <button
-                title={graph.nodes.get(id)!.name}
-                aria-current={index === state.path.length - 1 ? 'page' : undefined}
                 onClick={() => {
-                  setPanel(null);
-                  dispatch({ type: 'breadcrumb', depth: index + 1 });
+                  closePanels();
+                  dispatch({ type: 'breadcrumb', depth: 0 });
                 }}
+                aria-current={!state.path.length ? 'page' : undefined}
               >
-                {graph.nodes.get(id)!.name}
+                {scene.nodes.get(state.scope!)!.name}
               </button>
-            </Fragment>
-          ))}
+            </>
+          )}
+          {state.path.map((id, index) =>
+            id === state.scope ? null : (
+              <Fragment key={id}>
+                <ChevronRight size={12} aria-hidden="true" />
+                <button
+                  title={scene.nodes.get(id)!.name}
+                  aria-current={index === state.path.length - 1 ? 'page' : undefined}
+                  onClick={() => {
+                    closePanels();
+                    dispatch({ type: 'breadcrumb', depth: index + 1 });
+                  }}
+                >
+                  {scene.nodes.get(id)!.name}
+                </button>
+              </Fragment>
+            ),
+          )}
         </nav>
-        <span className="detail-level">{state.path.length ? `Depth ${state.path.length}` : 'Overview'}</span>
+        <button
+          ref={routesButton}
+          className="route-directory-button"
+          onClick={() => (directory ? setDirectory(null) : browse())}
+          aria-expanded={!!directory}
+        >
+          <ListFilter size={15} />
+          Routes <span>{graph.document.routes.length}</span>
+        </button>
       </div>
       <div className="scope-line">
         <span className="scope-status">
           <i />
-          {graph.document.routes.length} route slices <span>·</span>{' '}
-          {partial ? 'partial coverage' : 'complete within slices'}
+          Real scan <span>·</span> {graph.document.routes.length} routes <span>·</span>{' '}
+          {graph.document.symbolIndex.length} symbols
         </span>
         <span className="scope-context">
-          Handler calls <span>·</span> auth context collapsed
+          {isOverview
+            ? `${groups.length} source files · ${partialRoutes} routes with partial coverage`
+            : `Focused route · ${scene.nodes.get(state.scope!)!.subtitle}`}
         </span>
       </div>
-      <GraphCanvas
-        graph={graph}
-        positions={positions}
-        visible={visible}
-        state={state}
-        dispatch={dispatch}
-        onToggle={toggle}
-      >
+      <div className="canvas-area" ref={canvasArea}>
+        <GraphCanvas
+          key={state.scope || 'overview'}
+          graph={scene}
+          positions={positions}
+          visible={visible}
+          state={state}
+          dispatch={dispatch}
+          onToggle={toggle}
+        />
+        {directory && (
+          <RouteDirectory
+            key={directory.file || 'all'}
+            groups={groups}
+            file={directory.file}
+            selected={state.scope}
+            onChoose={chooseRoute}
+            onClose={() => setDirectory(null)}
+            returnFocus={routesButton}
+          />
+        )}
         {panel && (
           <SourcePanel
             graph={graph}
@@ -175,7 +265,13 @@ function AtlasWorkspace({
             returnFocus={panel === 'source' ? sourceButton : scopeButton}
           />
         )}
-      </GraphCanvas>
+        {isOverview && !directory && !panel && (
+          <div className="overview-caption">
+            <span>REPOSITORY / SOURCE FILES</span>
+            <p>Choose a file, then follow a route.</p>
+          </div>
+        )}
+      </div>
       <section className="selection-bar" aria-label="Selected node">
         <div className="selection-copy">
           <div className="selection-heading">
@@ -190,67 +286,95 @@ function AtlasWorkspace({
                     ? 'data summary'
                     : selected.kind === 'auth'
                       ? 'auth context'
-                      : 'call occurrence'}
+                      : selected.kind === 'group'
+                        ? 'source file'
+                        : selected.kind === 'repository'
+                          ? 'scan overview'
+                          : 'call occurrence'}
             </span>
           </div>
           <small>
-            {selected.kind === 'route'
-              ? selected.subtitle
-              : selected.range
-                ? `${selected.range.file}:${selected.range.startLine}–${selected.range.endLine}`
-                : selected.subtitle}
+            {selected.sourceFile ||
+              (selected.kind === 'repository'
+                ? `${groups.length} source files · includes example code · no agent review`
+                : selected.kind === 'route'
+                  ? selected.subtitle
+                  : selected.range
+                    ? `${selected.range.file}:${selected.range.startLine}–${selected.range.endLine}`
+                    : selected.subtitle)}
           </small>
         </div>
         <div className="selection-actions">
-          <button
-            ref={sourceButton}
-            className="secondary-button"
-            onClick={() => setPanel(panel === 'source' ? null : 'source')}
-            aria-expanded={panel === 'source'}
-            aria-controls={panel === 'source' ? 'source-panel' : undefined}
-          >
-            <Code2 size={15} />
-            Source
-          </button>
+          {!isOverview && (
+            <button
+              ref={sourceButton}
+              className="secondary-button"
+              onClick={() => {
+                setDirectory(null);
+                setPanel(panel === 'source' ? null : 'source');
+              }}
+              aria-expanded={panel === 'source'}
+              aria-controls={panel === 'source' ? 'source-panel' : undefined}
+            >
+              <Code2 size={15} />
+              Source
+            </button>
+          )}
           <button
             className="primary-button"
             onClick={() => toggle(selected.id)}
-            disabled={!selected.children.length}
+            disabled={!selected.children.length && !selected.groupedRoutes}
           >
             {actionLabel}
-            {selected.children.length > 0 && !isOpen && <ArrowRight size={15} />}
+            {(selected.groupedRoutes || (selected.children.length > 0 && !isOpen)) && (
+              <ArrowRight size={15} />
+            )}
           </button>
         </div>
       </section>
       <footer className="app-footer">
         <div className="legend" aria-label="Graph relationship legend">
-          <span>
-            <i className="legend-line call" />
-            Calls
-          </span>
-          <span>
-            <i className="legend-line summary" />
-            Data summary
-          </span>
-          <span>
-            <i className="legend-line context" />
-            Auth / unresolved
-          </span>
+          {isOverview ? (
+            <span>
+              <i className="legend-line contains" />
+              Source grouping · not calls
+            </span>
+          ) : (
+            <>
+              <span>
+                <i className="legend-line call" />
+                Calls
+              </span>
+              <span>
+                <i className="legend-line summary" />
+                Data summary
+              </span>
+              <span>
+                <i className="legend-line context" />
+                Auth / unresolved
+              </span>
+            </>
+          )}
         </div>
         <button
           ref={scopeButton}
           className="scope-button"
-          onClick={() => setPanel(panel === 'scope' ? null : 'scope')}
+          onClick={() => {
+            setDirectory(null);
+            setPanel(panel === 'scope' ? null : 'scope');
+          }}
           aria-expanded={panel === 'scope'}
-          title="About this example and its coverage"
+          title="Real scan provenance and coverage"
         >
-          Hand-authored example
+          Real scan · scope & coverage
         </button>
         <span className="node-count">{visible.size} nodes</span>
       </footer>
       <div className="sr-only" role="status" aria-live="polite">
-        {state.path.length ? state.path.map((id) => graph.nodes.get(id)!.name).join(', ') : 'All routes'}.{' '}
-        {visible.size} visible nodes. Selected {selected.name}.
+        {isOverview
+          ? `All ${graph.document.routes.length} routes grouped by source file`
+          : `Focused route ${scene.nodes.get(state.scope!)!.name}`}
+        . {visible.size} visible nodes. Selected {selected.name}.
       </div>
     </main>
   );

@@ -1,7 +1,9 @@
-import { ancestors, visibleIds } from './adapter';
+import { ancestors, routeGraph, visibleIds } from './adapter';
+import { overviewGraph } from './catalog';
 import type { AtlasGraph, Camera } from './types';
 
 export interface ViewSnapshot {
+  scope: string | null;
   path: string[];
   selected: string;
   camera: Camera;
@@ -13,15 +15,22 @@ export type NavigationAction =
   | { type: 'select' | 'expand' | 'collapse'; id: string }
   | { type: 'camera'; camera: Camera }
   | { type: 'breadcrumb'; depth: number }
+  | { type: 'focus-route'; id: string; camera: Camera }
+  | { type: 'overview' }
   | { type: 'back' };
-const snapshot = ({ path, selected, camera }: ViewSnapshot): ViewSnapshot => ({
+const snapshot = ({ scope, path, selected, camera }: ViewSnapshot): ViewSnapshot => ({
+  scope,
   path: [...path],
   selected,
   camera: { ...camera },
 });
-export const initialNavigation = (graph: AtlasGraph): NavigationState => ({
+export const initialNavigation = (
+  graph: AtlasGraph,
+  scope: string | null = graph.defaultId,
+): NavigationState => ({
+  scope,
   path: [],
-  selected: graph.defaultId,
+  selected: scope === null ? 'repository' : scope,
   camera: { scale: 1, x: 0, y: 0 },
   history: [],
 });
@@ -36,13 +45,52 @@ export function navigate(
     const previous = state.history.at(-1);
     return previous ? { ...snapshot(previous), history: state.history.slice(0, -1) } : state;
   }
+  if (action.type === 'overview') {
+    if (state.scope === null) return state;
+    const prior = state.history.findLastIndex((item) => item.scope === null);
+    return prior >= 0
+      ? {
+          ...snapshot(state.history[prior]),
+          history: state.history.slice(0, prior),
+        }
+      : {
+          ...state,
+          scope: null,
+          path: [],
+          selected: 'repository',
+          history: [...state.history, snapshot(state)],
+        };
+  }
+  if (action.type === 'focus-route') {
+    if (graph.nodes.get(action.id)?.kind !== 'route') return state;
+    if (state.scope === action.id) return state;
+    return {
+      scope: action.id,
+      path: [],
+      selected: action.id,
+      camera: action.camera,
+      history: [...state.history, snapshot(state)],
+    };
+  }
+  if (state.scope === null) {
+    return action.type === 'select' && overviewGraph(graph).nodes.has(action.id)
+      ? { ...state, selected: action.id }
+      : state;
+  }
   if (action.type === 'breadcrumb') {
     if (action.depth < 0 || action.depth >= state.path.length) return state;
     const path = state.path.slice(0, action.depth);
     const prior = state.history.findLastIndex(
-      (item) => item.path.length === path.length && item.path.every((id, i) => id === path[i]),
+      (item) =>
+        item.scope === state.scope &&
+        item.path.length === path.length &&
+        item.path.every((id, i) => id === path[i]),
     );
-    if (prior >= 0) return { ...snapshot(state.history[prior]), history: state.history.slice(0, prior) };
+    if (prior >= 0)
+      return {
+        ...snapshot(state.history[prior]),
+        history: state.history.slice(0, prior),
+      };
     return {
       ...state,
       path,
@@ -51,7 +99,7 @@ export function navigate(
     };
   }
   const node = graph.nodes.get(action.id);
-  if (!node || !visibleIds(graph, state.path).has(action.id)) return state;
+  if (!node || !visibleIds(routeGraph(graph, state.scope), state.path).has(action.id)) return state;
   if (action.type === 'select') return { ...state, selected: action.id };
   if (action.type === 'expand') {
     if (!node.children.length || state.path.includes(node.id)) return state;

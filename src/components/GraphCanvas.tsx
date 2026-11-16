@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { LocateFixed, Maximize, Minus, Plus } from 'lucide-react';
-import { fitCamera, initialCamera, NODE_HEIGHT, NODE_WIDTH, zoomCamera } from '../graph/layout';
+import { fitCamera, NODE_HEIGHT, NODE_WIDTH, zoomCamera } from '../graph/layout';
 import type { AtlasGraph, Point } from '../graph/types';
 import type { NavigationAction, NavigationState } from '../graph/navigation';
 import { useAnimatedScene } from '../hooks/useAnimatedScene';
@@ -30,16 +30,16 @@ export function GraphCanvas({ graph, positions, visible, state, dispatch, onTogg
   const { poses, transitioning } = useAnimatedScene(graph, positions, visible, state.path, state.selected);
   useLayoutEffect(() => {
     const element = viewport.current!;
-    const measure = () => setViewportSize({ width: element.clientWidth, height: element.clientHeight });
+    const measure = () =>
+      setViewportSize({
+        width: element.clientWidth,
+        height: element.clientHeight,
+      });
     measure();
-    dispatch({
-      type: 'camera',
-      camera: initialCamera(positions, graph, element.clientWidth, element.clientHeight),
-    });
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [graph, positions, dispatch]);
+  }, []);
   const hasOffscreenNodes =
     viewportSize.width > 0 &&
     [...visible].some((id) => {
@@ -53,10 +53,16 @@ export function GraphCanvas({ graph, positions, visible, state, dispatch, onTogg
         top + NODE_HEIGHT * state.camera.scale > viewportSize.height
       );
     });
-  const size = () => ({ width: viewport.current!.clientWidth, height: viewport.current!.clientHeight });
+  const size = () => ({
+    width: viewport.current!.clientWidth,
+    height: viewport.current!.clientHeight,
+  });
   const zoom = (factor: number) => {
     const { width, height } = size();
-    dispatch({ type: 'camera', camera: zoomCamera(state.camera, factor, { x: width / 2, y: height / 2 }) });
+    dispatch({
+      type: 'camera',
+      camera: zoomCamera(state.camera, factor, { x: width / 2, y: height / 2 }),
+    });
   };
   const focusSelection = () => {
     const { width, height } = size();
@@ -88,16 +94,22 @@ export function GraphCanvas({ graph, positions, visible, state, dispatch, onTogg
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
     const delta = (
-      { ArrowLeft: [60, 0], ArrowRight: [-60, 0], ArrowUp: [0, 60], ArrowDown: [0, -60] } as Record<
-        string,
-        number[]
-      >
+      {
+        ArrowLeft: [60, 0],
+        ArrowRight: [-60, 0],
+        ArrowUp: [0, 60],
+        ArrowDown: [0, -60],
+      } as Record<string, number[]>
     )[event.key];
     if (delta) {
       event.preventDefault();
       dispatch({
         type: 'camera',
-        camera: { ...state.camera, x: state.camera.x + delta[0], y: state.camera.y + delta[1] },
+        camera: {
+          ...state.camera,
+          x: state.camera.x + delta[0],
+          y: state.camera.y + delta[1],
+        },
       });
     } else if (event.key === '+' || event.key === '=') {
       event.preventDefault();
@@ -160,9 +172,11 @@ export function GraphCanvas({ graph, positions, visible, state, dispatch, onTogg
               const from = poses.get(edge.from);
               const to = poses.get(edge.to);
               if (!from || !to) return null;
-              const x1 = from.x + (edge.kind === 'context' ? 7 : NODE_WIDTH - 6),
-                y1 = from.y + NODE_HEIGHT / 2;
-              const x2 = to.x + 7,
+              const structural = edge.kind === 'contains';
+              const x1 =
+                  from.x + (structural ? NODE_WIDTH / 2 : edge.kind === 'context' ? 7 : NODE_WIDTH - 6),
+                y1 = from.y + (structural ? NODE_HEIGHT : NODE_HEIGHT / 2);
+              const x2 = to.x + (structural ? NODE_WIDTH / 2 : 7),
                 y2 = to.y + NODE_HEIGHT / 2;
               const distance = x2 - x1;
               return (
@@ -175,7 +189,11 @@ export function GraphCanvas({ graph, positions, visible, state, dispatch, onTogg
                       Math.min(from.opacity, to.opacity) *
                       (edge.kind === 'summary' && state.path.length ? 0.4 : 0.7),
                   }}
-                  d={`M ${x1} ${y1} C ${x1 + distance * 0.45} ${y1}, ${x2 - distance * 0.35} ${y2}, ${x2} ${y2}`}
+                  d={
+                    structural
+                      ? `M ${x1} ${y1} V ${y1 + 40} H ${to.x - 24} V ${y2} H ${to.x + 7}`
+                      : `M ${x1} ${y1} C ${x1 + distance * 0.45} ${y1}, ${x2 - distance * 0.35} ${y2}, ${x2} ${y2}`
+                  }
                 />
               );
             })}
@@ -212,15 +230,29 @@ export function GraphCanvas({ graph, positions, visible, state, dispatch, onTogg
                   <strong>{node.name}</strong>
                   <small>{node.subtitle}</small>
                 </button>
-                {node.children.length > 0 && (
+                {(node.children.length > 0 || node.groupedRoutes) && (
                   <button
                     className="node-toggle"
                     onClick={() => onToggle(id)}
-                    aria-label={`${open ? 'Collapse' : 'Expand'} ${node.name}${node.call ? `, call ${node.call.order}` : ''}, ${node.children.length} direct calls`}
-                    aria-expanded={open}
-                    title={`${open ? 'Collapse' : 'Expand'} ${node.children.length} direct calls`}
+                    aria-label={
+                      node.groupedRoutes
+                        ? `Browse ${node.groupedRoutes.length} routes in ${node.name}`
+                        : `${open ? 'Collapse' : 'Expand'} ${node.name}${node.call ? `, call ${node.call.order}` : ''}, ${node.children.length} direct calls`
+                    }
+                    aria-expanded={node.groupedRoutes ? undefined : open}
+                    title={
+                      node.groupedRoutes
+                        ? `Browse ${node.groupedRoutes.length} routes`
+                        : `${open ? 'Collapse' : 'Expand'} ${node.children.length} direct calls`
+                    }
                   >
-                    {open ? <Minus size={14} /> : <span>+{node.children.length}</span>}
+                    {node.groupedRoutes ? (
+                      <span>↗</span>
+                    ) : open ? (
+                      <Minus size={14} />
+                    ) : (
+                      <span>+{node.children.length}</span>
+                    )}
                   </button>
                 )}
               </div>
@@ -268,7 +300,10 @@ export function GraphCanvas({ graph, positions, visible, state, dispatch, onTogg
         <button
           onClick={() => {
             const { width, height } = size();
-            dispatch({ type: 'camera', camera: fitCamera(positions, visible, width, height) });
+            dispatch({
+              type: 'camera',
+              camera: fitCamera(positions, visible, width, height),
+            });
           }}
           aria-label="Fit visible graph"
           title="Fit visible graph"
