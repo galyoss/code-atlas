@@ -1488,3 +1488,97 @@ button svg {
 .graph-node.is-context .label-leader {
   opacity: 0.2;
 }
+
+.role-captions {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.role-captions > div {
+  position: absolute;
+  transform: translateX(-50%);
+  width: 270px;
+  text-align: center;
+}
+.role-captions strong {
+  display: block;
+  color: #96c6b8;
+  font: 9px var(--mono);
+  letter-spacing: 1.4px;
+}
+.role-captions small {
+  display: block;
+  color: #69858d;
+  font: 9px var(--mono);
+  margin-top: 8px;
+}
+.flow-summary {
+  position: absolute;
+  top: 20px;
+  right: 22px;
+  max-width: min(370px, calc(100% - 40px));
+  padding: 13px 38px 13px 15px;
+  background: #12241ff5;
+  border: 1px solid #355d4e;
+  border-radius: 6px;
+}
+.flow-summary .flow-eyebrow {
+  display: block;
+  font: 8px var(--mono);
+  color: #87bca5;
+  letter-spacing: 1.5px;
+  margin-bottom: 7px;
+}
+.flow-summary strong {
+  font: 11px var(--mono);
+  color: #c5f3dd;
+}
+.flow-summary p {
+  font: 10px/1.5 var(--mono);
+  color: #b2c9bf;
+  margin: 7px 0 4px;
+}
+.flow-summary small {
+  display: block;
+  color: #7e9d90;
+  font: 9px/1.5 var(--mono);
+}
+.flow-summary .icon-button {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  width: 25px;
+  height: 25px;
+  border: 0;
+  background: transparent;
+}
+@media (max-width: 1000px) {
+  .flow-summary {
+    top: 118px;
+    right: 16px;
+    max-width: 290px;
+  }
+}
+@media (max-width: 760px) {
+  .flow-summary {
+    top: 100px;
+    right: 15px;
+    max-width: calc(100% - 30px);
+    padding: 10px 34px 10px 12px;
+  }
+  .flow-summary small {
+    display: none;
+  }
+  .role-captions > div {
+    width: 220px;
+  }
+}
+.node-name,
+.label-leader {
+  transition: opacity 140ms ease;
+}
+.graph-viewport[data-transitioning='true'] .graph-node .node-name,
+.graph-viewport[data-transitioning='true'] .graph-node .label-leader {
+  opacity: 0;
+}

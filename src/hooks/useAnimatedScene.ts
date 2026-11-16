@@ -56,9 +56,15 @@ export function useAnimatedScene(
       if (!visible.has(id))
         target.set(id, { ...origin(id, visible), opacity: 0 });
     let frame = 0;
+    const changed = [...target].some(([id, end]) => {
+      const begin = from.get(id)!;
+      return (
+        begin.x !== end.x || begin.y !== end.y || begin.opacity !== end.opacity
+      );
+    });
     const start = performance.now(),
-      duration = reduced ? 0 : 600;
-    setTransitioning(!reduced);
+      duration = reduced || !changed ? 0 : 740;
+    setTransitioning(duration > 0);
     const tick = (now: number) => {
       const progress = duration ? Math.min(1, (now - start) / duration) : 1,
         eased = 1 - (1 - progress) ** 3;

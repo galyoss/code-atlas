@@ -11,6 +11,7 @@ import {
   type NavigationAction,
   type NavigationState,
 } from '../graph/navigation';
+import { flowIndex } from '../graph/flow';
 import type { AtlasGraph } from '../graph/types';
 const views = [
   {
@@ -27,8 +28,8 @@ const views = [
   },
   {
     id: 'data',
-    label: 'Data access',
-    description: 'Where objects are read or written',
+    label: 'Data flow',
+    description: 'Recorded paths from entry points to data',
     icon: Database,
   },
 ] as const;
@@ -58,9 +59,7 @@ export function GraphControls({
   const entries = graph.baseIds.filter(
     (id) => graph.nodes.get(id)!.groupedRoutes?.length,
   ).length;
-  const owners = graph.baseIds.filter(
-    (id) => graph.nodes.get(id)!.accesses.length,
-  ).length;
+  const accesses = flowIndex(graph).overview.terminals.size;
   const selected = state.selected ? graph.nodes.get(state.selected)! : null;
   return (
     <aside
@@ -102,7 +101,7 @@ export function GraphControls({
                   ? graph.baseIds.length
                   : id === 'entries'
                     ? entries
-                    : owners}
+                    : accesses}
               </small>
             </button>
           ))}
@@ -111,8 +110,8 @@ export function GraphControls({
           {state.view === 'code'
             ? 'Indexed functions and classes, with their recorded connections.'
             : state.view === 'entries'
-              ? `${entries} route handlers emphasized. Select one to see its HTTP routes.`
-              : `${owners} functions with named object accesses emphasized.`}
+              ? `${entries} route handlers. Select one to trace every recorded path to data.`
+              : `${accesses} named access calls and their paths. Select an entry to include its other recorded data effects.`}
         </p>
       </section>
       <section className="rail-section">
@@ -166,6 +165,8 @@ export function GraphControls({
             <>
               <span title={selected!.name}>{selected!.name}</span> · selected
               branch only
+              {state.flowEntry ? ' · changing depth clears entry flow' : ''}
+              {state.view === 'data' ? ' · overview paths remain' : ''}
             </>
           )}
         </p>
@@ -203,7 +204,9 @@ export function GraphControls({
           <i /> <span>Unresolved target</span>
         </div>
         <p className="rail-note key-footnote">
-          Clusters are source files.
+          {state.view === 'code'
+            ? 'Clusters are source files.'
+            : 'Positions follow the view’s roles.'}
           <br />
           Arrows are calls, not execution order.
         </p>

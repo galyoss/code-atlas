@@ -37,10 +37,13 @@ ignored. This repository does not configure a frontend deployment.
   Mint ↗ markers identify HTTP entry points; circular blue glyphs are other
   code symbols (functions and classes). Subtle source regions provide context.
   File controls collapse/reopen their symbols in place, preserving real links crossing the region boundary.
-- The collapsible left rail emphasizes **Code**, **Entry points**, or **Data access**
-  on the same canvas. **Files / Symbols** changes resolution at fixed anchors;
+- The collapsible left rail emphasizes **Code**, **Entry points**, or **Data flow**
+  on the same canvas. View changes morph between a source-file map, an entry-led
+  composition and entry → code/calls → data bands. **Files / Symbols** changes resolution;
   **Call depth 0–3** changes only the selected handler or call branch. Mixed manual
-  states are labeled. File resolution preserves saved detail, including access paths.
+  states are labeled. Explicit depth replaces the active entry flow; Data flow’s
+  overview paths remain visible and are included in the depth indicator. File resolution
+  temporarily hides detail and preserves every saved layer.
 - **R / W / RW** badges distinguish reads, writes and both. The 32 owner functions
   summarize 108 route-scoped named object accesses (72 reads, 36 writes), attributed
   only to immediate resolved parents. These are evidence records, not runtime
@@ -50,15 +53,28 @@ ignored. This repository does not configure a frontend deployment.
   Read/object labels help identify the operations; original call names, routes,
   resolution, exact source and all evidence remain in selection and **Source**.
   Call-level persistence effects are identified separately from named object access.
-- Select any glyph to highlight its actual neighbors. Full names appear on hover,
+- Select an entry handler to immediately trace every recorded branch to named
+  data accesses and explicit persistence-effect frontiers. Unrelated code dims;
+  exact intermediate occurrences and definition links remain visible. Inspecting
+  any call or its **Source** keeps that flow active. **Clear entry flow** returns to
+  the surrounding graph. An entry without evidence says “No data path recorded”;
+  the partial scan does not establish that it has no persistence.
+- Data flow opens 108 named access calls and their minimal ancestor paths
+  (182 detail nodes) alongside all 213 symbols. Selecting an entry adds its other
+  explicit read/write frontiers. Named accesses stay terminals even with children;
+  propagated wrapper effects yield to deeper recorded terminals. Unknown effects
+  never manufacture a path. Manual branches and targeted owner paths are separate
+  from both automatic layers.
+- Select another glyph to inspect its actual neighbors when no flow is active. Full names appear on hover,
   selection and in **Source**. Double-click a handler/call or use **Open detail** to
   reveal its direct recorded children in the same network. Several branches can
   remain open. Dashed auth context and definition links differ from call arrows;
   unresolved invocations and data accesses have distinct glyphs.
-- For a concrete path, find `create_run`, press Enter to focus its canonical node,
-  open its calls, select the `_prepare_run` occurrence and open it. The canonical
-  `_prepare_run` symbol remains connected to its recorded callers across files.
-  Open another handler independently; the first branch and camera stay in place.
+- For a concrete path, find `create_run` and press Enter: its 42 recorded detail
+  nodes lead to 34 data terminals (8 with named objects). `get_thread` reveals 8
+  detail nodes and 6 terminals. Switching entries replaces only automatic flow;
+  manually opened branches and camera stay in place. Dashed definition links
+  connect the exact occurrences to canonical symbols without inventing call edges.
 - Search matches literal terms across symbol names, qualified names, files and
   route fields. Exact identifiers rank first. Typing highlights the same scene;
   Enter / the arrow explicitly focuses the next result. Clear resets highlighting.
@@ -68,10 +84,10 @@ ignored. This repository does not configure a frontend deployment.
   Selection and expansion never fit or recenter automatically. A fresh phone-sized
   view starts near a recorded handler at usable magnification; Fit shows the full graph.
 - **Back** restores the exact camera, selection, collapsed files and expanded
-  occurrences, targeted access paths, view and rail settings. **Source** is
+  occurrences, targeted access paths, active entry flow, view and rail settings. **Source** is
   closeable without graph movement. Escape closes the panel or rail, clears
   search, or goes Back. Shift+Space on a focused glyph toggles its
-  recorded children. Reduced-motion preferences settle expansions immediately.
+  recorded children. Reduced-motion preferences settle view changes and expansions immediately.
 - **Partial static scan** opens provenance, the original document download, route
   coverage and known gaps. A symbol's source panel includes its incoming/outgoing
   canonical relationships and all supporting route/call/auth-step references.
@@ -101,16 +117,21 @@ an example. Raw SHA-256:
 
 `src/data.ts` loads the immutable scan asset. `graph/adapter.ts` constructs canonical
 nodes/aggregated evidence and complete occurrence trees. `catalog.ts` searches
-recorded fields. `layout.ts` computes a deterministic stopped D3 group layout once
-and uses fixed collision-free symbol slots; an append-only spatial allocator places
-new detail near its parent and reserves those anchors for the session. Allocations
-never move surviving nodes. `navigation.ts` owns view snapshots, and
-`useAnimatedScene.ts` retargets local node/edge motion over 600 ms.
+recorded fields. `layout.ts` computes a deterministic stopped D3 source-file layout once.
+`view-layout.ts` caches semantic role bands and append-only detail slots per view;
+ordinary selection/expansion never moves surviving anchors. View changes deliberately
+rearrange identities and returning to Code restores its saved anchors. `flow.ts`
+indexes exact occurrence ancestry and terminal frontiers, keeping auth/definition
+context distinct from calls. `navigation.ts` owns snapshots and independent manual,
+mode and active-flow visibility. `useAnimatedScene.ts` retargets node/edge motion from
+the current pose over 740 ms, including rapid interruptions and reduced motion.
 
 Tests independently traverse raw JSON to verify the exact symbol, call-pair and
 reference sets. They also cover source fidelity, same-name/ID distinctions,
 unresolved-parent data ownership, read-only and unknown-effect cases, exact targeted
-access paths, multiple open branches, collapse/history, pointer zoom, initial framing and fixed non-overlapping glyphs. Visual acceptance uses the
+access paths, complete entry flow and route/auth identity, independent visibility
+layers, collapse/history, pointer zoom, semantic band order, source-map round trips
+and non-overlapping glyphs. Visual acceptance uses the
 actual production build; results and scope are recorded in
 [`ATLAS_NETWORK_VERIFICATION.md`](docs/ATLAS_NETWORK_VERIFICATION.md) and the
 [controls/data verification](docs/ATLAS_CONTROLS_VERIFICATION.md).

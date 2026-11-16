@@ -9,6 +9,8 @@ import {
   type PointerEvent,
 } from 'react';
 import { LocateFixed, Maximize, Minus, Plus } from 'lucide-react';
+import { flowIndex } from '../graph/flow';
+import type { RoleCaption } from '../graph/view-layout';
 import { accessPathIds, visibleEdges } from '../graph/adapter';
 import {
   dataEffect,
@@ -29,6 +31,7 @@ import { useAnimatedScene } from '../hooks/useAnimatedScene';
 interface Props {
   graph: AtlasGraph;
   layout: NetworkLayout;
+  captions: RoleCaption[];
   positions: Map<string, Point>;
   visible: Set<string>;
   state: NavigationState;
@@ -41,6 +44,7 @@ interface Props {
 export function GraphCanvas({
   graph,
   layout,
+  captions,
   positions,
   visible,
   state,
@@ -62,15 +66,24 @@ export function GraphCanvas({
   const poseIds = new Set(poses.keys());
   const edges = visibleEdges(graph, poseIds, state.collapsed);
   const active = hovered || state.selected;
+  const flow = state.flowEntry
+    ? flowIndex(graph).entries.get(state.flowEntry)!
+    : null;
   const focusPaths = useMemo(
     () =>
-      state.accessFocus && state.selected === state.accessFocus
-        ? accessPathIds(graph, state.accessFocus)
-        : new Set<string>(),
-    [graph, state.accessFocus, state.selected],
+      flow
+        ? new Set([...flow.paths, ...flow.definitions])
+        : state.accessFocus && state.selected === state.accessFocus
+          ? accessPathIds(graph, state.accessFocus)
+          : new Set<string>(),
+    [graph, flow, state.accessFocus, state.selected],
   );
   const neighbors = new Set<string>(
-    focusPaths.size ? [...focusPaths, state.selected!] : active ? [active] : [],
+    focusPaths.size
+      ? [...focusPaths, ...(state.selected ? [state.selected] : [])]
+      : active
+        ? [active]
+        : [],
   );
   for (const edge of edges)
     if (!focusPaths.size && (edge.from === active || edge.to === active)) {
@@ -96,6 +109,7 @@ export function GraphCanvas({
     ...(active ? graph.nodes.get(active)!.children : []),
     ...neighbors,
     ...matches,
+    ...(state.view === 'data' ? [...flowIndex(graph).overview.terminals] : []),
     ...(state.view === 'code'
       ? []
       : graph.baseIds.filter((id) =>
@@ -103,10 +117,19 @@ export function GraphCanvas({
         )),
     ...landmarks,
   ];
+  const renderedVisible =
+    state.view === 'code'
+      ? visible
+      : new Set(
+          [...visible].filter(
+            (id) =>
+              graph.nodes.get(id)!.kind !== 'group' || state.collapsed.has(id),
+          ),
+        );
   const labels = placeLabels(
     graph,
     positions,
-    visible,
+    renderedVisible,
     priority,
     state.camera.scale,
     active,
@@ -196,7 +219,7 @@ export function GraphCanvas({
       className={`graph-viewport ${dragging ? 'is-dragging' : ''}`}
       tabIndex={0}
       role="region"
-      aria-label="Code network. Drag or use arrow keys to pan. Wheel, plus and minus zoom. Select a node, then open its calls."
+      aria-label="Code network. Drag or use arrow keys to pan. Wheel, plus and minus zoom. Select an entry to trace its recorded data flow."
       data-transitioning={transitioning}
       data-camera={JSON.stringify(state.camera)}
       onKeyDown={onKeyDown}
@@ -244,7 +267,7 @@ export function GraphCanvas({
             return (
               <circle
                 key={group.id}
-                className={`group-region ${state.collapsed.has(group.id) ? 'is-collapsed' : ''}`}
+                className={`group-region ${state.collapsed.has(group.id) || state.view !== 'code' ? 'is-collapsed' : ''}`}
                 cx={region.x}
                 cy={region.y}
                 r={region.radius}
@@ -254,11 +277,13 @@ export function GraphCanvas({
           {edges.map((edge) => {
             const a = poses.get(edge.from)!,
               b = poses.get(edge.to)!;
-            const linked = focusPaths.size
-              ? (edge.kind === 'call' || edge.kind === 'unresolved') &&
-                focusPaths.has(edge.from) &&
-                focusPaths.has(edge.to)
-              : edge.from === active || edge.to === active;
+            const linked = flow
+              ? flow.edges.has(edge.id)
+              : focusPaths.size
+                ? (edge.kind === 'call' || edge.kind === 'unresolved') &&
+                  focusPaths.has(edge.from) &&
+                  focusPaths.has(edge.to)
+                : edge.from === active || edge.to === active;
             const angle = Math.atan2(b.y - a.y, b.x - a.x),
               padding = 10;
             const end = {
@@ -276,9 +301,10 @@ export function GraphCanvas({
                 data-from={edge.from}
                 data-to={edge.to}
                 data-kind={edge.kind}
+                data-flow-edge={!!flow?.edges.has(edge.id)}
                 data-evidence-count={edge.evidence.length}
                 data-aggregated={!!edge.aggregated}
-                className={`graph-edge ${edge.kind} ${linked ? 'is-highlighted' : ''} ${active && !linked ? 'is-muted' : ''}`}
+                className={`graph-edge ${edge.kind} ${linked ? 'is-highlighted' : ''} ${(flow || active) && !linked ? 'is-muted' : ''}`}
                 d={path}
                 opacity={edge.aggregated ? 1 : Math.min(a.opacity, b.opacity)}
                 markerEnd={
@@ -295,6 +321,7 @@ export function GraphCanvas({
             selected = state.selected === id,
             present = visible.has(id);
           if (node.kind === 'group') {
+            if (state.view !== 'code' && !state.collapsed.has(id)) return null;
             const group = graph.groups.find((group) => group.id === id)!;
             const collapsed = state.collapsed.has(id);
             return (
@@ -318,9 +345,11 @@ export function GraphCanvas({
           }
           const effect = dataEffect(node),
             highlighted = emphasized(node, state.view);
-          const dimmed = active
-            ? !neighbors.has(id)
-            : searching && !matchSet.has(id);
+          const dimmed = flow
+            ? !focusPaths.has(id)
+            : active
+              ? !neighbors.has(id)
+              : searching && !matchSet.has(id);
           const label = labels.get(id);
           const activeLabel = id === active;
           const labelWidth = activeLabel
@@ -337,16 +366,18 @@ export function GraphCanvas({
           return (
             <button
               key={id}
-              className={`graph-node ${selected ? 'is-selected' : ''} ${dimmed ? 'is-muted' : ''} ${matchSet.has(id) ? 'is-match' : ''} ${neighbors.has(id) && active !== id ? 'is-neighbor' : ''} ${state.view !== 'code' && !highlighted && !focusPaths.has(id) ? 'is-context' : ''}`}
+              className={`graph-node ${selected ? 'is-selected' : ''} ${dimmed ? 'is-muted' : ''} ${matchSet.has(id) ? 'is-match' : ''} ${neighbors.has(id) && active !== id ? 'is-neighbor' : ''} ${state.view === 'entries' && !highlighted && !focusPaths.has(id) ? 'is-context' : ''}`}
               data-node-id={id}
               data-kind={node.kind}
               data-canonical={!!node.canonical}
+              data-flow-path={!!flow?.paths.has(id)}
+              data-flow-terminal={!!flow?.terminals.has(id)}
               data-entry={!!node.groupedRoutes?.length}
               data-effect={effect || 'none'}
               data-access-count={node.accesses.length}
               data-emphasized={highlighted}
-              data-world-x={positions.get(id)!.x}
-              data-world-y={positions.get(id)!.y}
+              data-world-x={positions.get(id)?.x ?? pose.x}
+              data-world-y={positions.get(id)?.y ?? pose.y}
               data-pose-x={pose.x}
               data-pose-y={pose.y}
               data-visible={present}
@@ -422,8 +453,24 @@ export function GraphCanvas({
           );
         })}
       </div>
+      {captions.length > 0 && (
+        <div className="role-captions" aria-label="Layout roles">
+          {captions.map((caption) => (
+            <div
+              key={caption.label}
+              style={{
+                left: caption.x * state.camera.scale + state.camera.x,
+                top: caption.y * state.camera.scale + state.camera.y,
+              }}
+            >
+              <strong>{caption.label}</strong>
+              <small>{caption.detail}</small>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="canvas-hint">
-        Drag to explore <span>·</span> Double-click to open calls
+        Drag to explore <span>·</span> Select an entry to trace data
       </div>
       <div className="camera-controls" aria-label="Graph camera controls">
         <button onClick={() => zoom(1 / 1.15)} aria-label="Zoom out">
@@ -462,7 +509,7 @@ export function GraphCanvas({
             const { width, height } = size();
             dispatch({
               type: 'camera',
-              camera: fitCamera(positions, visible, width, height),
+              camera: fitCamera(positions, renderedVisible, width, height),
             });
           }}
         >

@@ -17,12 +17,14 @@ import {
   X,
 } from 'lucide-react';
 import { loadScan, scan } from './data';
-import { visibleIds } from './graph/adapter';
+import { flowIndex } from './graph/flow';
+import { ViewAnchors } from './graph/view-layout';
 import { matchingSymbols } from './graph/catalog';
 import type { LabelViewport } from './graph/labels';
-import { DetailAnchors, initialCamera, layoutGraph } from './graph/layout';
+import { initialCamera, layoutGraph } from './graph/layout';
 import {
-  branchOpen,
+  branchActionLabel,
+  navigationVisibleIds,
   initialNavigation,
   navigate,
   type NavigationAction,
@@ -88,17 +90,33 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
     railButton = useRef<HTMLButtonElement>(null),
     canvasArea = useRef<HTMLDivElement>(null);
   const layout = useMemo(() => layoutGraph(graph), [graph]);
-  const anchors = useMemo(() => new DetailAnchors(layout), [layout]);
+  const anchors = useMemo(
+    () => new ViewAnchors(graph, layout),
+    [graph, layout],
+  );
   const visible = useMemo(
-    () => visibleIds(graph, state.expanded, state.collapsed, state.revealed),
-    [graph, state.expanded, state.collapsed, state.revealed],
+    () => navigationVisibleIds(graph, state),
+    [
+      graph,
+      state.expanded,
+      state.collapsed,
+      state.revealed,
+      state.flowEntry,
+      state.view,
+    ],
   );
   const positions = useMemo(
-    () => anchors.ensure(graph, visible),
-    [anchors, graph, visible],
+    () => anchors.ensure(state.view, visible),
+    [anchors, state.view, visible],
   );
   const matches = useMemo(() => matchingSymbols(graph, query), [graph, query]);
   const selected = state.selected ? graph.nodes.get(state.selected)! : null;
+  const flow = state.flowEntry
+    ? flowIndex(graph).entries.get(state.flowEntry)!
+    : null;
+  const flowHandler = state.flowEntry
+    ? graph.nodes.get(state.flowEntry)!
+    : null;
   const selectedEffect = selected ? dataEffect(selected) : null;
   const selectedAccesses = selected ? accessSummary(selected) : null;
   const symbolsVisible = [...visible].filter(
@@ -124,7 +142,7 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
     const canvas = canvasArea.current!;
     const overlays = [
       ...canvas.querySelectorAll<HTMLElement>(
-        '.graph-controls, .network-toolbar, .network-caption, .selection-bar, .source-panel, .camera-controls, .canvas-hint',
+        '.graph-controls, .network-toolbar, .network-caption, .flow-summary, .selection-bar, .source-panel, .camera-controls, .canvas-hint, .role-captions > div',
       ),
     ];
     const measure = () => {
@@ -152,7 +170,16 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
     const observer = new ResizeObserver(measure);
     [canvas, ...overlays].forEach((element) => observer.observe(element));
     return () => observer.disconnect();
-  }, [panel, state.selected, state.railOpen, state.view, query, visible]);
+  }, [
+    panel,
+    state.selected,
+    state.flowEntry,
+    state.railOpen,
+    state.view,
+    state.camera,
+    query,
+    visible,
+  ]);
   const back = () => {
     setPanel(null);
     dispatch({ type: 'back' });
@@ -179,6 +206,9 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
       data-dataset="aegra-real"
       data-selected={state.selected || ''}
       data-scope="network"
+      data-flow-entry={state.flowEntry || ''}
+      data-flow-paths={JSON.stringify(flow ? [...flow.paths] : [])}
+      data-flow-terminals={JSON.stringify(flow ? [...flow.terminals] : [])}
       data-view={state.view}
       data-rail-open={state.railOpen}
       data-expanded={JSON.stringify([...state.expanded])}
@@ -219,6 +249,7 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
         <GraphCanvas
           graph={graph}
           layout={layout}
+          captions={anchors.captions(state.view)}
           positions={positions}
           visible={visible}
           state={state}
@@ -304,6 +335,38 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
             )}
           </p>
         </div>
+        {flow && (
+          <aside
+            className="flow-summary"
+            aria-label="Active entry flow"
+            role="status"
+          >
+            <span className="flow-eyebrow">ENTRY → DATA</span>
+            <strong>{flowHandler!.name}</strong>
+            <p>
+              {flow.terminals.size
+                ? `${flow.terminals.size} recorded data operations · ${[...flow.terminals].filter((id) => graph.nodes.get(id)!.accesses.length).length} with named objects`
+                : 'No data path recorded for this entry.'}
+            </p>
+            <small>
+              Partial static scan ·{' '}
+              {flow.paths.size &&
+              [...flow.paths].some((id) => graph.nodes.get(id)!.kind === 'auth')
+                ? 'includes auth context'
+                : 'recorded paths only'}
+            </small>
+            <button
+              className="icon-button"
+              aria-label="Clear entry flow"
+              onClick={() => {
+                setPanel(null);
+                dispatch({ type: 'clear-flow' });
+              }}
+            >
+              <X size={13} />
+            </button>
+          </aside>
+        )}
         {panel && (
           <SourcePanel
             graph={graph}
@@ -401,9 +464,7 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
                     ? state.collapsed.has(selected.id)
                       ? 'Open group'
                       : 'Collapse group'
-                    : branchOpen(graph, state, selected.id)
-                      ? 'Collapse calls'
-                      : 'Open detail'}
+                    : branchActionLabel(graph, state, selected.id)}
                   <ArrowRight size={14} />
                 </button>
               )}
