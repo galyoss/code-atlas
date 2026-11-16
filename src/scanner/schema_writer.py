@@ -33,7 +33,7 @@ _GAPS = [
         "gap_other_frameworks",
         "other",
         "unsupported",
-        "v1 only reads FastAPI. Other web frameworks are not modeled.",
+        "The scanner reads FastAPI, Express, and Rails. Other web frameworks are not modeled.",
     ),
     (
         "gap_llm_judge",
@@ -424,8 +424,11 @@ def _route(route: RouteFact, ids: Ids, symbol_ids: dict[str, str], referenced: s
         limits.max_snippet_chars,
         route.registration_truncated,
     )
+    mechanism = route.registration_mechanism
+    if mechanism not in {"decorator", "route_table", "resource_dsl", "unknown"}:
+        mechanism = "unknown"
     registration = {
-        "mechanism": "decorator",
+        "mechanism": mechanism,
         "range": _range(route.registration_file, route.registration_start, route.registration_end),
     }
     if reg_snippet:

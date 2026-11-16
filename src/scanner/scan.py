@@ -1,7 +1,8 @@
 """Scan a repository into a code-graph document.
 
-The FastAPI command calls this. A later framework passes a different adapter
-to `read_project` without changing the writer.
+One adapter reads the repository. Rails is selected from a Gemfile and
+`config/routes.rb`, Express from `package.json` plus `app.use` or a router,
+and FastAPI otherwise. The writer does not change.
 """
 
 from __future__ import annotations
@@ -10,14 +11,20 @@ import subprocess
 from pathlib import Path
 
 from scanner import __version__
+from scanner.detect import select_adapter
 from scanner.facts import Limits, RepoFact
-from scanner.fastapi import FastAPIAdapter
 from scanner.framework import read_project
 from scanner.joern_runner import build_overlay
 from scanner.overlay import load_overlay_file
 from scanner.project import Project
 from scanner.schema_writer import write_document
 from scanner.source_index import load_index
+
+_GENERATORS = {
+    "fastapi": "export-fastapi",
+    "express": "export-express",
+    "rails": "export-rails",
+}
 
 
 def export_repository(
@@ -29,15 +36,28 @@ def export_repository(
     joern_home: Path | None = None,
     cache: bool = True,
 ) -> dict:
-    """Scan `repo` with the FastAPI adapter and return a schema document."""
+    """Scan `repo` with the one matching adapter and return a schema document."""
     limits = limits or Limits()
+    adapter = select_adapter(repo)
     if overlay_path is not None:
         overlay = load_overlay_file(overlay_path, repo)
     else:
-        overlay = build_overlay(repo, joern_home=joern_home, cpg_path=cpg_path, cache=cache)
+        overlay = build_overlay(
+            repo,
+            joern_home=joern_home,
+            cpg_path=cpg_path,
+            cache=cache,
+            frontend=getattr(adapter, "frontend", "python"),
+        )
     project = Project(repo=repo, index=load_index(repo), overlay=overlay, limits=limits)
-    routes = read_project(FastAPIAdapter(), project)
-    return write_document(routes, _repo_fact(repo), limits, generator_version=__version__)
+    routes = read_project(adapter, project)
+    return write_document(
+        routes,
+        _repo_fact(repo),
+        limits,
+        generator_name=_GENERATORS.get(adapter.framework, "scanner"),
+        generator_version=__version__,
+    )
 
 
 def _repo_fact(repo: Path) -> RepoFact:

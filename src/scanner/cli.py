@@ -16,7 +16,10 @@ _DEFAULT_SCHEMA = Path(__file__).resolve().parents[2] / "docs" / "code-graph-sch
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="export-fastapi", description="Export FastAPI routes to a code-graph document.")
+    parser = argparse.ArgumentParser(
+        prog="export-fastapi",
+        description="Export one repository to a code-graph document. FastAPI, Express, or Rails is selected from the repo.",
+    )
     parser.add_argument("repo", type=Path, help="Repository to scan")
     parser.add_argument("-o", "--output", type=Path, required=True, help="Where to write the JSON document")
     parser.add_argument("--schema", type=Path, default=_DEFAULT_SCHEMA, help="Schema 1.0.0 file")

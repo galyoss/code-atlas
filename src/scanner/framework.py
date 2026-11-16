@@ -16,8 +16,8 @@ from scanner.project import Project
 class FrameworkAdapter(Protocol):
     """Reads one framework into route facts.
 
-    v1 has a single implementation, `FastAPIAdapter`. A later framework
-    implements these three methods and is passed to `read_project`.
+    `FastAPIAdapter`, `ExpressAdapter`, and `RailsAdapter` implement these
+    three methods. `read_project` runs one adapter for the repository.
     """
 
     framework: str

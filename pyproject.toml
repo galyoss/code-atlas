@@ -1,7 +1,7 @@
 [project]
 name = "scanner"
 version = "1.0.0"
-description = "Code scanner that writes a code-graph schema 1.0.0 document. The current command exports FastAPI routes."
+description = "Code scanner that writes a code-graph schema 1.0.0 document for FastAPI, Express, or Rails."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

@@ -1,4 +1,4 @@
-"""FastAPI adapter. The only framework implementation in v1."""
+"""FastAPI adapter."""
 
 from scanner.fastapi.adapter import FastAPIAdapter
 
