@@ -2,6 +2,8 @@
 
 > An AI-powered security scanner that maps code flows into graphs and uses independent agents to uncover vulnerabilities, trace attack paths, and cross-check findings.
 
+The primary goal is scan quality. Aim for high precision by minimizing false positives and high recall by catching as many real vulnerabilities in the scanned code as possible. The interactive graph helps developers understand and investigate those results.
+
 ## Why CodeAtlas exists
 
 A security issue often spans several parts of a repository. An entry point accepts input, application logic processes it, and another function reads data, writes to storage, or performs a sensitive operation. Looking at those pieces separately can hide the conditions that make a vulnerability possible.
