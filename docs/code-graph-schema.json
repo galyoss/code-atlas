@@ -1,0 +1,2128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-sast:code-graph:1.0.0",
+  "title": "Code graph route slice",
+  "description": "Per-route security slice of a web application. A scanner emits one document per repository. An agent judges one routes item, together with the symbolIndex entries it references, to see which identity is in scope and which objects that route loads or mutates. This schema is not a vulnerability report: it has no severity, verdict, or fix, and additional properties are rejected so those cannot be attached. Version 1.0.0. Companion spec: /cursor/stores/self/docs/code-graph-schema.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "illustrative",
+    "generator",
+    "repo",
+    "languages",
+    "frameworks",
+    "generatedAt",
+    "unresolvedGaps",
+    "symbolIndex",
+    "routes"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "description": "Version of this document shape. This schema accepts only 1.0.0. Consumers select a schema by this value before validating. See the versioning rules in the companion spec.",
+      "const": "1.0.0"
+    },
+    "illustrative": {
+      "description": "True when a person wrote this document to illustrate the schema. False when a scanner emitted it. Agents must not treat an illustrative document as a scan or as a vulnerability report.",
+      "type": "boolean"
+    },
+    "note": {
+      "description": "Why this document exists when it is illustrative, or a scanner warning that applies to the whole document. Required when illustrative is true. Not a finding.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "generator": {
+      "description": "Program that wrote this document.",
+      "$ref": "#/$defs/generator"
+    },
+    "repo": {
+      "description": "Repository the slices were taken from. Paths elsewhere in the document are relative to this repository and are never absolute machine paths.",
+      "$ref": "#/$defs/repo"
+    },
+    "languages": {
+      "description": "In-scope languages the generator indexed, including a language that contributed no routes. python: Python. ruby: Ruby. javascript: JavaScript. typescript: TypeScript.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/language"
+      }
+    },
+    "frameworks": {
+      "description": "Frameworks that appear on routes, plus a framework the generator indexed and then found no routes for. The set must match the route framework values. rails: Ruby on Rails. django: Django, including Django REST framework. fastapi: FastAPI. express: Express. nestjs: NestJS. flask: Flask. sinatra: Sinatra. other: any other web framework, with frameworkDetail set on each such route.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/framework"
+      }
+    },
+    "generatedAt": {
+      "description": "When the generator finished this document, as an RFC 3339 date-time.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "unresolvedGaps": {
+      "description": "Surfaces this generator did not fully model. An empty array means the generator claims no such gap, not that the repository is free of these surfaces. Generators that do not support GraphQL, WebSockets, or dynamic dispatch must say so here rather than omit the limitation. Not a list of vulnerabilities.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/gap"
+      }
+    },
+    "symbolIndex": {
+      "description": "In-repo definitions referenced by routes. This is not a whole-program index and it does not contain file text. A judge for one route needs that route plus the entries whose ids the route mentions. External callees have no entry; their calls use resolution external.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/symbol"
+      }
+    },
+    "routes": {
+      "description": "One security slice per HTTP route. Ordered stably by the generator, preferably by method then pathTemplate. Each item is the context an agent needs for that route. Do not put GraphQL operations or WebSocket handlers here; record those in unresolvedGaps.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/route"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "illustrative": {
+            "const": true
+          }
+        },
+        "required": ["illustrative"]
+      },
+      "then": {
+        "required": ["note"]
+      }
+    }
+  ],
+  "$defs": {
+    "id": {
+      "description": "Identifier unique across every id in the document, not only within one array. Lowercase words separated by underscores.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{1,63}$"
+    },
+    "language": {
+      "description": "A programming language this schema can slice. python: Python. ruby: Ruby. javascript: JavaScript source. typescript: TypeScript source.",
+      "oneOf": [
+        {
+          "const": "python",
+          "description": "Python."
+        },
+        {
+          "const": "ruby",
+          "description": "Ruby."
+        },
+        {
+          "const": "javascript",
+          "description": "JavaScript."
+        },
+        {
+          "const": "typescript",
+          "description": "TypeScript."
+        }
+      ]
+    },
+    "framework": {
+      "description": "Web framework that registered the route. rails: Ruby on Rails. django: Django, including an API layer such as Django REST framework. fastapi: FastAPI. express: Express. nestjs: NestJS. flask: Flask. sinatra: Sinatra. other: a framework that is none of these; the route must set frameworkDetail.",
+      "oneOf": [
+        {
+          "const": "rails",
+          "description": "Ruby on Rails."
+        },
+        {
+          "const": "django",
+          "description": "Django, including Django REST framework and similar Django API layers."
+        },
+        {
+          "const": "fastapi",
+          "description": "FastAPI."
+        },
+        {
+          "const": "express",
+          "description": "Express."
+        },
+        {
+          "const": "nestjs",
+          "description": "NestJS."
+        },
+        {
+          "const": "flask",
+          "description": "Flask."
+        },
+        {
+          "const": "sinatra",
+          "description": "Sinatra."
+        },
+        {
+          "const": "other",
+          "description": "A web framework other than the named values. frameworkDetail names it."
+        }
+      ]
+    },
+    "httpMethod": {
+      "description": "HTTP method the route is registered for. GET: a read. POST: a create or action. PUT: a full replace. PATCH: a partial update. DELETE: a removal. HEAD: headers for the corresponding read. OPTIONS: method discovery. TRACE: a diagnostic echo. ALL: the registration accepts every method.",
+      "oneOf": [
+        {
+          "const": "GET",
+          "description": "Read."
+        },
+        {
+          "const": "POST",
+          "description": "Create or action."
+        },
+        {
+          "const": "PUT",
+          "description": "Full replace."
+        },
+        {
+          "const": "PATCH",
+          "description": "Partial update."
+        },
+        {
+          "const": "DELETE",
+          "description": "Removal."
+        },
+        {
+          "const": "HEAD",
+          "description": "Headers only. Authorization is usually that of the matching GET."
+        },
+        {
+          "const": "OPTIONS",
+          "description": "Method discovery."
+        },
+        {
+          "const": "TRACE",
+          "description": "Diagnostic echo."
+        },
+        {
+          "const": "ALL",
+          "description": "The registration accepts every method. Prefer one route per method when the handlers differ."
+        }
+      ]
+    },
+    "resolution": {
+      "description": "How the callee was bound. resolved: exactly one in-repo definition, and symbolId is set. ambiguous: not exactly one in-repo definition; candidates lists the in-repo possibilities and may be empty when the target is computed. external: the body is outside this repository (standard library, framework, or third-party package).",
+      "oneOf": [
+        {
+          "const": "resolved",
+          "description": "Exactly one in-repo definition. symbolId is set. candidates is absent."
+        },
+        {
+          "const": "ambiguous",
+          "description": "Not exactly one in-repo definition. candidates is set and lists every in-repo possibility the tracer would not choose among. Empty candidates means a computed target with no identified in-repo symbol."
+        },
+        {
+          "const": "external",
+          "description": "The callee body is outside this repository. symbolId and candidates are absent. The call is not inlined."
+        }
+      ]
+    },
+    "touchesPersistence": {
+      "description": "Whether this callee reads or writes application state. none: it does not. read: it reads persisted state. write: it writes persisted state, including insert, update, delete, and commit. read_write: it does both. unknown: the tracer could not classify it. A value other than none means the callee touches persistence.",
+      "oneOf": [
+        {
+          "const": "none",
+          "description": "Does not read or write application state."
+        },
+        {
+          "const": "read",
+          "description": "Reads persisted state."
+        },
+        {
+          "const": "write",
+          "description": "Writes persisted state, including insert, update, delete, and transaction commit."
+        },
+        {
+          "const": "read_write",
+          "description": "Reads and writes persisted state in the same callee."
+        },
+        {
+          "const": "unknown",
+          "description": "The tracer could not tell whether the callee touches persistence."
+        }
+      ]
+    },
+    "expanded": {
+      "description": "Whether the body of this step or call was opened. yes: the body was opened and the child-call list is complete (empty when the body has no calls). no: the body was not opened and the child-call list is empty. partial: some child calls are listed and at least one was not; a budget.omitted entry points at this node.",
+      "oneOf": [
+        {
+          "const": "yes",
+          "description": "The body was opened. The child-call list is complete. An empty list means the body contains no calls."
+        },
+        {
+          "const": "no",
+          "description": "The body was not opened. The child-call list is empty."
+        },
+        {
+          "const": "partial",
+          "description": "Some child calls are listed and at least one was dropped. budget.omitted explains why and points at this node."
+        }
+      ]
+    },
+    "coverageValue": {
+      "description": "How complete one axis of a slice is. complete: the generator claims this axis includes every in-scope fact and did not drop a relevant in-repo body. partial: something in scope was truncated, ambiguous, or not opened. unknown: the generator will not say whether the axis is complete. External callees recorded with their arguments are included context, not a hole.",
+      "oneOf": [
+        {
+          "const": "complete",
+          "description": "The generator claims this axis includes every in-scope fact. No relevant in-repo body was dropped."
+        },
+        {
+          "const": "partial",
+          "description": "An in-scope fact or body was truncated, ambiguous, or not opened. See budget.omitted and unresolvedGaps."
+        },
+        {
+          "const": "unknown",
+          "description": "The generator cannot say whether this axis is complete."
+        }
+      ]
+    },
+    "yesNoUnknown": {
+      "description": "A tracer observation, not a vulnerability verdict. yes: observed in the source this slice includes. no: that source was inspected and this was not observed. unknown: the tracer could not tell. no does not speak about code the slice dropped; check coverage before treating no as exhaustive.",
+      "oneOf": [
+        {
+          "const": "yes",
+          "description": "Observed in the source this slice includes."
+        },
+        {
+          "const": "no",
+          "description": "The included source was inspected and this was not observed. This says nothing about code the slice dropped."
+        },
+        {
+          "const": "unknown",
+          "description": "The tracer could not tell from the included source."
+        }
+      ]
+    },
+    "sourceRange": {
+      "description": "A region of an in-repo file. Lines are 1-based and endLine is greater than or equal to startLine. The text of the file is not included.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "startLine", "endLine"],
+      "properties": {
+        "file": {
+          "description": "Repository-relative path using forward slashes, with no leading slash and no parent-directory segments.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240,
+          "pattern": "^(?!/)(?!.*\\.\\.)(?:[A-Za-z0-9_@+.-]+/)*[A-Za-z0-9_@+.-]+$"
+        },
+        "startLine": {
+          "description": "First line of the region, 1-based.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "endLine": {
+          "description": "Last line of the region, 1-based, greater than or equal to startLine.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "startColumn": {
+          "description": "First column of the region, 1-based. Omit both columns when the tracer only knows lines. When one column is set, set both.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "endColumn": {
+          "description": "Last column of the region, 1-based, inclusive.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "snippet": {
+      "description": "A short excerpt of source so an agent can read the security-relevant lines without opening the repository. Optional everywhere it appears. The schema rejects text longer than 480 characters; set truncated when the excerpt was cut to fit.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "truncated", "range"],
+      "properties": {
+        "text": {
+          "description": "The excerpt. Bounded so one route stays small. Not the whole file.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 480
+        },
+        "truncated": {
+          "description": "True when text was cut to satisfy the snippet budget or the 480-character cap. False when text is the full region in range.",
+          "type": "boolean"
+        },
+        "range": {
+          "description": "File and lines that text was taken from. May be tighter than the enclosing symbol or step range.",
+          "$ref": "#/$defs/sourceRange"
+        }
+      }
+    },
+    "generator": {
+      "description": "Identity of the program that emitted the document. A hand-written example uses a name that is not a scanner.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "description": "Generator name. Synthetic documents use a name that cannot be confused with a production scanner.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "version": {
+          "description": "Generator version string.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        }
+      }
+    },
+    "repo": {
+      "description": "The repository under scan. Synthetic documents still name a fictional repository so the shape matches a real run.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "revision", "vcs"],
+      "properties": {
+        "name": {
+          "description": "Short repository name, not a filesystem path.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "revision": {
+          "description": "Revision the slices were built from. A commit id when vcs is git. An opaque label such as illustrative when vcs is none.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "vcs": {
+          "description": "Where revision came from. git: revision is a commit id that was recorded. none: no version-control metadata applies, including a synthetic document. unknown: a repository was present but the revision could not be read.",
+          "oneOf": [
+            {
+              "const": "git",
+              "description": "revision is a commit id that was checked out or recorded."
+            },
+            {
+              "const": "none",
+              "description": "No version-control metadata applies. Used for synthetic documents."
+            },
+            {
+              "const": "unknown",
+              "description": "A repository was present but the revision could not be read."
+            }
+          ]
+        },
+        "remote": {
+          "description": "Clone or browse URL of the repository when the generator knows it. Omit when unknown. Never a local filesystem path.",
+          "type": "string",
+          "format": "uri",
+          "maxLength": 300
+        }
+      }
+    },
+    "symbol": {
+      "description": "One in-repo definition. Enough to point at the body without copying it: id, file, lines, and signature.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "language", "kind", "name", "qualifiedName", "signature", "range"],
+      "properties": {
+        "id": {
+          "description": "Definition id. Routes refer to this value from symbolId fields.",
+          "$ref": "#/$defs/id"
+        },
+        "language": {
+          "description": "Language of this definition.",
+          "$ref": "#/$defs/language"
+        },
+        "kind": {
+          "description": "What kind of definition this is. function: a named function that is not a method. method: a function defined on a class or object. class: a class, including an ORM model or a schema type. module: a module or file-level namespace. constant: a named constant that is not a class or module. other: none of the above.",
+          "oneOf": [
+            {
+              "const": "function",
+              "description": "A named function that is not a method."
+            },
+            {
+              "const": "method",
+              "description": "A function defined on a class or object."
+            },
+            {
+              "const": "class",
+              "description": "A class, including an ORM model or a request-body schema type."
+            },
+            {
+              "const": "module",
+              "description": "A module or file-level namespace."
+            },
+            {
+              "const": "constant",
+              "description": "A named constant that is not a class or module."
+            },
+            {
+              "const": "other",
+              "description": "A definition that is none of the named kinds."
+            }
+          ]
+        },
+        "name": {
+          "description": "Unqualified name as written at the definition.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "qualifiedName": {
+          "description": "Name that distinguishes this definition in the repository, using dots or the language's usual separators.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "signature": {
+          "description": "One-line declaration, including the parameters or the fields an agent needs to see (for a model, the ownership columns). Not the body.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "range": {
+          "description": "File and lines of the definition, including the body.",
+          "$ref": "#/$defs/sourceRange"
+        }
+      }
+    },
+    "paramRead": {
+      "description": "One place a request value is read.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["range", "symbolId", "expression"],
+      "properties": {
+        "range": {
+          "description": "File and lines of this read.",
+          "$ref": "#/$defs/sourceRange"
+        },
+        "symbolId": {
+          "description": "In-repo definition that contains the read.",
+          "$ref": "#/$defs/id"
+        },
+        "expression": {
+          "description": "Bounded source text of the read, such as thread_id or body.prompt.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      }
+    },
+    "entryParam": {
+      "description": "A request value this route reads. Includes object ids and other inputs (body fields, credentials) so a later review of assignment or authentication can use the same slice. namesObject marks values that can identify a persisted object.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "location",
+        "pathInRequest",
+        "presence",
+        "valueShape",
+        "namesObject",
+        "reads"
+      ],
+      "properties": {
+        "id": {
+          "description": "Id of this request value. paramFlows and writtenFields refer to it.",
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "description": "Name of the value. Header names are lowercase. A body field uses the field name, not the whole body, when the handler reads the field.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+        },
+        "location": {
+          "description": "Where the value enters the request. path: a path-template parameter. query: the query string. body: a decoded body or a field of it. header: a header. cookie: a cookie. form: a form field the framework exposes separately from a structured body. unknown: a request input whose location the tracer could not place.",
+          "oneOf": [
+            {
+              "const": "path",
+              "description": "A parameter of the path template."
+            },
+            {
+              "const": "query",
+              "description": "A query-string parameter."
+            },
+            {
+              "const": "body",
+              "description": "The decoded body, or one field of it when name is that field."
+            },
+            {
+              "const": "header",
+              "description": "A request header. name is lowercase."
+            },
+            {
+              "const": "cookie",
+              "description": "A cookie value."
+            },
+            {
+              "const": "form",
+              "description": "A form field the framework treats separately from a structured body."
+            },
+            {
+              "const": "unknown",
+              "description": "A request input whose location the tracer could not place."
+            }
+          ]
+        },
+        "pathInRequest": {
+          "description": "Dotted location of the value, such as path.thread_id, query.limit, body.prompt, header.authorization, cookie.session, or form.user.id.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "presence": {
+          "description": "Whether the route is entered without this value. required: the handler is not entered if the value is absent. optional: the value may be absent. unknown: the tracer could not tell.",
+          "oneOf": [
+            {
+              "const": "required",
+              "description": "The handler is not entered when this value is absent."
+            },
+            {
+              "const": "optional",
+              "description": "The value may be absent and the handler still entered."
+            },
+            {
+              "const": "unknown",
+              "description": "The tracer could not tell whether the value may be absent."
+            }
+          ]
+        },
+        "valueShape": {
+          "description": "Shape of the value. scalar: one string, number, or boolean. object: a structured object. array: a list. unknown: the shape was not classified.",
+          "oneOf": [
+            {
+              "const": "scalar",
+              "description": "A single string, number, or boolean."
+            },
+            {
+              "const": "object",
+              "description": "A structured object."
+            },
+            {
+              "const": "array",
+              "description": "A list."
+            },
+            {
+              "const": "unknown",
+              "description": "The tracer could not classify the shape."
+            }
+          ]
+        },
+        "namesObject": {
+          "description": "Whether this value can identify a persisted object the route acts on. yes: it is used as an object handle (a path id, a foreign key, or another key passed into a load or mutate). no: the included uses were inspected and none identify a persisted object (free text, a credential, a display flag). unknown: the tracer could not see the uses or could not tell. The object's own later owner column is not this flag; this flag is about the request value.",
+          "$ref": "#/$defs/yesNoUnknown"
+        },
+        "typeSymbolId": {
+          "description": "In-repo type or schema symbol of this value when it has one, such as a body model. Omit for a builtin.",
+          "$ref": "#/$defs/id"
+        },
+        "reads": {
+          "description": "Places this value is read, in source order. At least one.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/paramRead"
+          }
+        }
+      }
+    },
+    "identityBinding": {
+      "description": "A principal this route can see after the auth chain runs. Empty identityBindings means the slice found no principal, which is different from kind anonymous.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "kind", "presence", "expression", "range"],
+      "properties": {
+        "id": {
+          "description": "Id of this binding. Auth steps, data accesses, and written fields refer to it.",
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "description": "Name the handler uses for this principal, such as user or current_user.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "kind": {
+          "description": "What kind of principal this is. user: an end-user principal. account: an account the caller acts for, when that is distinct from the user. tenant: a tenant, workspace, or organization id. role: a role or scope set without a specific user id. session: a session id before it is reduced to a user. api_key: a key or client credential. anonymous: an explicit unauthenticated principal. unknown: a binding whose kind was not classified.",
+          "oneOf": [
+            {
+              "const": "user",
+              "description": "An end-user principal."
+            },
+            {
+              "const": "account",
+              "description": "An account the caller acts for, when that is distinct from the user."
+            },
+            {
+              "const": "tenant",
+              "description": "A tenant, workspace, or organization id."
+            },
+            {
+              "const": "role",
+              "description": "A role or scope set without a specific user id."
+            },
+            {
+              "const": "session",
+              "description": "A session id before it is reduced to a user."
+            },
+            {
+              "const": "api_key",
+              "description": "A key or client credential."
+            },
+            {
+              "const": "anonymous",
+              "description": "An explicit unauthenticated principal. Different from an empty identityBindings array, which means no principal was found."
+            },
+            {
+              "const": "unknown",
+              "description": "A binding was produced and its kind was not classified."
+            }
+          ]
+        },
+        "presence": {
+          "description": "Whether the handler runs without this binding. required: the handler is not entered without it. optional: the handler may run without it. unknown: the tracer could not tell.",
+          "oneOf": [
+            {
+              "const": "required",
+              "description": "The handler is not entered without this binding."
+            },
+            {
+              "const": "optional",
+              "description": "The handler may run without this binding."
+            },
+            {
+              "const": "unknown",
+              "description": "The tracer could not tell whether the handler requires this binding."
+            }
+          ]
+        },
+        "expression": {
+          "description": "Bounded source text that introduces the binding, such as a parameter default.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "producedByAuthStepId": {
+          "description": "Auth-chain step that produces this binding. Omit when the framework injects it with no step the tracer could attribute.",
+          "$ref": "#/$defs/id"
+        },
+        "typeSymbolId": {
+          "description": "In-repo type of the binding when it has one.",
+          "$ref": "#/$defs/id"
+        },
+        "range": {
+          "description": "File and lines where the binding enters the handler or the step.",
+          "$ref": "#/$defs/sourceRange"
+        },
+        "snippet": {
+          "description": "Optional excerpt of the binding. Omit when the producing auth step already carries the excerpt.",
+          "$ref": "#/$defs/snippet"
+        }
+      }
+    },
+    "callNode": {
+      "description": "One invocation in the slice. Roots under an auth step are calls written in that step. Roots under callGraph are calls written in the handler. children are calls written in an opened in-repo body. order is the execution sequence across every call node in the route.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "order",
+        "depth",
+        "calleeName",
+        "qualifiedName",
+        "resolution",
+        "touchesPersistence",
+        "expanded",
+        "callSite",
+        "children"
+      ],
+      "properties": {
+        "id": {
+          "description": "Id of this call. Data accesses and budget omissions refer to it.",
+          "$ref": "#/$defs/id"
+        },
+        "order": {
+          "description": "Execution position of this call among every call node in the route, starting at 1, with no gaps. A child has a greater order than its parent. Auth-step calls and handler calls share this sequence.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "depth": {
+          "description": "Call depth. 1 for a root. A child's depth is its parent's depth plus 1.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "calleeName": {
+          "description": "Name of the callee as written at the call site.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "qualifiedName": {
+          "description": "Best name the tracer knows for the callee. For a resolved call this matches the symbol's qualifiedName.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "resolution": {
+          "description": "How the callee was bound. resolved: one in-repo definition. ambiguous: not one in-repo definition. external: the body is outside the repository and is not inlined.",
+          "$ref": "#/$defs/resolution"
+        },
+        "symbolId": {
+          "description": "Definition of the callee. Present only when resolution is resolved.",
+          "$ref": "#/$defs/id"
+        },
+        "candidates": {
+          "description": "In-repo symbols this call might target. Present only when resolution is ambiguous. Empty when the target is computed and no in-repo symbol was identified. A single sure target is resolution resolved, not a one-element candidate list.",
+          "type": "array",
+          "maxItems": 12,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "touchesPersistence": {
+          "description": "Whether this callee reads or writes application state, including what an opened body does.",
+          "$ref": "#/$defs/touchesPersistence"
+        },
+        "expanded": {
+          "description": "Whether the callee body was opened into children. External resolution is always no: library bodies are not inlined. Their effect is touchesPersistence and, when they load or mutate an object, a dataAccess on this call.",
+          "$ref": "#/$defs/expanded"
+        },
+        "callSite": {
+          "description": "File and lines of the invocation. This is the call, not the callee's definition. The definition is the symbolIndex entry for symbolId.",
+          "$ref": "#/$defs/sourceRange"
+        },
+        "argumentsExcerpt": {
+          "description": "Bounded text of the call expression as written, including the receiver and arguments. This is how an agent sees a filter predicate without the file.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "snippet": {
+          "description": "Optional excerpt of the call or of a body that was opened and still fits the snippet budget.",
+          "$ref": "#/$defs/snippet"
+        },
+        "children": {
+          "description": "Direct calls inside this callee, in execution order. Empty when expanded is no, and empty when expanded is yes but the body has no calls.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/callNode"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "resolution": {
+                "const": "resolved"
+              }
+            },
+            "required": ["resolution"]
+          },
+          "then": {
+            "required": ["symbolId"],
+            "not": {
+              "required": ["candidates"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resolution": {
+                "const": "ambiguous"
+              }
+            },
+            "required": ["resolution"]
+          },
+          "then": {
+            "required": ["candidates"],
+            "not": {
+              "required": ["symbolId"]
+            },
+            "properties": {
+              "expanded": {
+                "enum": ["no", "partial"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resolution": {
+                "const": "external"
+              }
+            },
+            "required": ["resolution"]
+          },
+          "then": {
+            "properties": {
+              "expanded": {
+                "const": "no"
+              }
+            },
+            "allOf": [
+              {
+                "not": {
+                  "required": ["symbolId"]
+                }
+              },
+              {
+                "not": {
+                  "required": ["candidates"]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "expanded": {
+                "const": "no"
+              }
+            },
+            "required": ["expanded"]
+          },
+          "then": {
+            "properties": {
+              "children": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "authStep": {
+      "description": "One middleware, filter, guard, dependency, policy, or inline check that runs for this route, including a hook defined in another file. Order is the array order.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "symbolId",
+        "qualifiedName",
+        "range",
+        "kind",
+        "mechanism",
+        "scope",
+        "applicability",
+        "onFailure",
+        "bindsObjectToCaller",
+        "expanded",
+        "calls"
+      ],
+      "properties": {
+        "id": {
+          "description": "Id of this step. Identity bindings refer to it when the step produces them.",
+          "$ref": "#/$defs/id"
+        },
+        "symbolId": {
+          "description": "In-repo definition of the hook.",
+          "$ref": "#/$defs/id"
+        },
+        "qualifiedName": {
+          "description": "Qualified name of the hook. Matches the symbol index.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "range": {
+          "description": "File and lines of the hook definition.",
+          "$ref": "#/$defs/sourceRange"
+        },
+        "kind": {
+          "description": "What question the hook answers. authentication: it establishes or rejects a caller identity and does not, by itself, mean the caller owns the object. authorization: it allows or denies an action, role, scope, or object. It may or may not compare the caller to the object; see bindsObjectToCaller. unknown: the tracer could not classify the hook.",
+          "oneOf": [
+            {
+              "const": "authentication",
+              "description": "Establishes or rejects a caller identity. Does not by itself mean the caller owns the requested object."
+            },
+            {
+              "const": "authorization",
+              "description": "Allows or denies an action, role, scope, or object. bindsObjectToCaller says whether the object is compared to the caller."
+            },
+            {
+              "const": "unknown",
+              "description": "The tracer could not classify the hook."
+            }
+          ]
+        },
+        "mechanism": {
+          "description": "How the hook is attached. Record each hook once, as the most specific mechanism. middleware: a layer around the app or route (Express, Rack, Django, Nest middleware). before_filter: a hook registered to run before the action, including Rails before_action and before_filter. guard: a NestJS guard or a similar allow-or-deny gate. dependency: a value the framework resolves before the handler, including FastAPI Depends. decorator: an annotation that applies a check, such as login_required, when it is not already recorded as a guard. policy: an object-level policy invoked for the route (Pundit, CanCanCan, django-guardian, and similar). inline: a check written in the handler or a callee rather than registered as a framework hook. interceptor: NestJS around-advice or a similar interceptor. unknown: a hook whose mechanism was not classified.",
+          "oneOf": [
+            {
+              "const": "middleware",
+              "description": "A layer wrapped around the app, router, or route."
+            },
+            {
+              "const": "before_filter",
+              "description": "A hook registered to run before the action, including Rails before_action and before_filter."
+            },
+            {
+              "const": "guard",
+              "description": "A NestJS guard or a similar gate that allows or denies entry."
+            },
+            {
+              "const": "dependency",
+              "description": "A parameter the framework resolves before the handler, including FastAPI Depends."
+            },
+            {
+              "const": "decorator",
+              "description": "An annotation on the handler that applies a check and is not already recorded as a guard."
+            },
+            {
+              "const": "policy",
+              "description": "An object-level policy invoked for the route."
+            },
+            {
+              "const": "inline",
+              "description": "A check written in the handler or a callee, not registered as a framework hook."
+            },
+            {
+              "const": "interceptor",
+              "description": "Around-advice such as a NestJS interceptor."
+            },
+            {
+              "const": "unknown",
+              "description": "The tracer saw a hook and could not classify how it is attached."
+            }
+          ]
+        },
+        "scope": {
+          "description": "Where the hook is attached. application: the whole application. router: a router, blueprint, or scope that includes this route. controller: a controller or class that includes this handler. route: this route only, including a dependency or decorator on the handler. inline: written in the handler or a callee. unknown: the attachment point was not classified.",
+          "oneOf": [
+            {
+              "const": "application",
+              "description": "Attached to the whole application."
+            },
+            {
+              "const": "router",
+              "description": "Attached to a router, blueprint, or scope that includes this route."
+            },
+            {
+              "const": "controller",
+              "description": "Attached to a controller or class that includes this handler."
+            },
+            {
+              "const": "route",
+              "description": "Attached to this route only."
+            },
+            {
+              "const": "inline",
+              "description": "Written in the handler or a callee rather than registered on a boundary."
+            },
+            {
+              "const": "unknown",
+              "description": "The tracer could not classify the attachment point."
+            }
+          ]
+        },
+        "applicability": {
+          "description": "Whether this step is entered on the requests that reach the route. always: it runs on every such request. conditional: the tracer saw a path that skips it. unknown: the tracer could not tell.",
+          "oneOf": [
+            {
+              "const": "always",
+              "description": "Runs on every request that reaches this route."
+            },
+            {
+              "const": "conditional",
+              "description": "The tracer saw a path on which this step does not run."
+            },
+            {
+              "const": "unknown",
+              "description": "The tracer could not tell whether this step always runs."
+            }
+          ]
+        },
+        "onFailure": {
+          "description": "What happens when the check inside this step fails or the credential is missing. abort: the request stops before the handler. continue: the request may still proceed. unknown: the tracer could not tell. continue on an authentication step is the shape an auth-bypass review looks for; it is not itself a finding.",
+          "oneOf": [
+            {
+              "const": "abort",
+              "description": "A failed check stops the request before the handler."
+            },
+            {
+              "const": "continue",
+              "description": "The request may proceed after a failed or missing check."
+            },
+            {
+              "const": "unknown",
+              "description": "The tracer could not tell whether failure stops the request."
+            }
+          ]
+        },
+        "bindsObjectToCaller": {
+          "description": "Whether this step ties the requested object to the caller. yes: the included source references both the caller and the object or an owner field of the object. no: the included source was inspected and it does not. unknown: the tracer could not tell. An authentication step that only loads the user is no. This is not a verdict that the route is safe or unsafe.",
+          "$ref": "#/$defs/yesNoUnknown"
+        },
+        "expanded": {
+          "description": "Whether the hook body was opened. yes: calls is the complete list of direct calls in the body. no: the body was not opened and calls is empty. partial: some calls are listed and at least one was not.",
+          "$ref": "#/$defs/expanded"
+        },
+        "calls": {
+          "description": "Direct calls written in this hook, as a tree, in execution order. Empty when the body has no calls or was not opened.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/callNode"
+          }
+        },
+        "callId": {
+          "description": "Call-graph node this step corresponds to, when the check is also an invocation (often an inline policy call). Omit when the step is only a framework hook.",
+          "$ref": "#/$defs/id"
+        },
+        "snippet": {
+          "description": "Optional excerpt of the hook. Include it when the body fits the snippet budget so the agent can read the check without the repository.",
+          "$ref": "#/$defs/snippet"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "expanded": {
+                "const": "no"
+              }
+            },
+            "required": ["expanded"]
+          },
+          "then": {
+            "properties": {
+              "calls": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "paramFlow": {
+      "description": "A request value that flows into a field or argument of a data access.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entryParamId", "field", "confidence"],
+      "properties": {
+        "entryParamId": {
+          "description": "Entry param that supplies the value.",
+          "$ref": "#/$defs/id"
+        },
+        "field": {
+          "description": "Field or argument the value flows into. Qualify it with the model when known, such as Thread.id.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$"
+        },
+        "confidence": {
+          "description": "How the flow was established. exact: the tracer followed the value from the entry param to this field. probable: the names match, or the param is the only candidate, without a full path. unknown: the flow is recorded but not justified.",
+          "oneOf": [
+            {
+              "const": "exact",
+              "description": "The tracer followed this value from the entry param to the field."
+            },
+            {
+              "const": "probable",
+              "description": "The names match, or the param is the only candidate, without a full data-flow path."
+            },
+            {
+              "const": "unknown",
+              "description": "The flow is recorded but the tracer could not justify it."
+            }
+          ]
+        }
+      }
+    },
+    "writtenField": {
+      "description": "One field written by a create or update. The source says where the value came from. This supports a later mass-assignment review; it is not a finding.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "source"],
+      "properties": {
+        "field": {
+          "description": "Attribute or column name on the data-access object, unqualified.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "source": {
+          "description": "Where the written value comes from. request_param: an entry param, and entryParamId is set. identity: an identity binding, and identityBindingId is set. loaded_object: an object this same route loaded, and sourceDataAccessId is set. constant: a literal in source. unknown: the tracer could not tell.",
+          "oneOf": [
+            {
+              "const": "request_param",
+              "description": "Copied from an entry param. entryParamId is set. The other source ids are absent."
+            },
+            {
+              "const": "identity",
+              "description": "Taken from an identity binding. identityBindingId is set. The other source ids are absent."
+            },
+            {
+              "const": "loaded_object",
+              "description": "Taken from an object this route loaded. sourceDataAccessId is set. The other source ids are absent."
+            },
+            {
+              "const": "constant",
+              "description": "A literal in source. No source id is set."
+            },
+            {
+              "const": "unknown",
+              "description": "The tracer could not tell where the value comes from. No source id is set."
+            }
+          ]
+        },
+        "entryParamId": {
+          "description": "Entry param copied into this field. Present only when source is request_param.",
+          "$ref": "#/$defs/id"
+        },
+        "identityBindingId": {
+          "description": "Identity binding copied into this field. Present only when source is identity.",
+          "$ref": "#/$defs/id"
+        },
+        "sourceDataAccessId": {
+          "description": "Earlier data access whose object supplied this value. Present only when source is loaded_object. Not this data access itself.",
+          "$ref": "#/$defs/id"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "request_param"
+              }
+            },
+            "required": ["source"]
+          },
+          "then": {
+            "required": ["entryParamId"],
+            "allOf": [
+              {
+                "not": {
+                  "required": ["identityBindingId"]
+                }
+              },
+              {
+                "not": {
+                  "required": ["sourceDataAccessId"]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "identity"
+              }
+            },
+            "required": ["source"]
+          },
+          "then": {
+            "required": ["identityBindingId"],
+            "allOf": [
+              {
+                "not": {
+                  "required": ["entryParamId"]
+                }
+              },
+              {
+                "not": {
+                  "required": ["sourceDataAccessId"]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "loaded_object"
+              }
+            },
+            "required": ["source"]
+          },
+          "then": {
+            "required": ["sourceDataAccessId"],
+            "allOf": [
+              {
+                "not": {
+                  "required": ["entryParamId"]
+                }
+              },
+              {
+                "not": {
+                  "required": ["identityBindingId"]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "enum": ["constant", "unknown"]
+              }
+            },
+            "required": ["source"]
+          },
+          "then": {
+            "allOf": [
+              {
+                "not": {
+                  "required": ["entryParamId"]
+                }
+              },
+              {
+                "not": {
+                  "required": ["identityBindingId"]
+                }
+              },
+              {
+                "not": {
+                  "required": ["sourceDataAccessId"]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "ownershipEvidence": {
+      "description": "What the tracer saw about binding this access to the caller. An owner field is a column or attribute that stores the principal an object belongs to, such as owner_id, user_id, created_by, or tenant_id. The object's own primary key is not an owner field. Filtering on that primary key alone is inPredicate no.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inPredicate", "stampedOnWrite", "ownerFields", "identityBindingIds"],
+      "properties": {
+        "inPredicate": {
+          "description": "Whether an owner field or an identity binding appears in the predicate that selects rows. yes: the included predicate references an owner field or an identity binding. no: the tracer saw the predicate and it does not (a filter on the object id alone is no). unknown: the tracer could not see the predicate. not_applicable: the operation has no predicate (a create). Not a verdict.",
+          "oneOf": [
+            {
+              "const": "yes",
+              "description": "The included predicate references an owner field or an identity binding. ownerFields is non-empty."
+            },
+            {
+              "const": "no",
+              "description": "The tracer saw the predicate and it does not reference an owner field or an identity binding."
+            },
+            {
+              "const": "unknown",
+              "description": "The tracer could not see the predicate."
+            },
+            {
+              "const": "not_applicable",
+              "description": "This operation has no predicate. Creates use this value."
+            }
+          ]
+        },
+        "stampedOnWrite": {
+          "description": "Whether the write assigns an owner field from an identity binding. yes: it does, and identityBindingIds names that binding. no: the tracer saw the assignments and no owner field is taken from an identity binding. unknown: the tracer could not see the assignments. not_applicable: this operation does not write fields (load, query, and delete). Not a verdict.",
+          "oneOf": [
+            {
+              "const": "yes",
+              "description": "An owner field is assigned from an identity binding. ownerFields and identityBindingIds are non-empty."
+            },
+            {
+              "const": "no",
+              "description": "The tracer saw the assignments and no owner field is taken from an identity binding."
+            },
+            {
+              "const": "unknown",
+              "description": "The tracer could not see the assignments."
+            },
+            {
+              "const": "not_applicable",
+              "description": "This operation does not assign fields. Loads, queries, and deletes use this value."
+            }
+          ]
+        },
+        "ownerFields": {
+          "description": "Owner fields the tracer saw in the predicate or the assignments, qualified when the model is known, such as Thread.owner_id. Empty when neither inPredicate nor stampedOnWrite is yes.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$"
+          }
+        },
+        "identityBindingIds": {
+          "description": "Identity bindings used in the predicate or assigned into an owner field. Empty when the access does not use a binding. A predicate that compares an owner field only to a client-supplied param has inPredicate yes, the param in paramFlows, and this array empty.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "anyOf": [
+              {
+                "properties": {
+                  "inPredicate": {
+                    "const": "yes"
+                  }
+                },
+                "required": ["inPredicate"]
+              },
+              {
+                "properties": {
+                  "stampedOnWrite": {
+                    "const": "yes"
+                  }
+                },
+                "required": ["stampedOnWrite"]
+              }
+            ]
+          },
+          "then": {
+            "properties": {
+              "ownerFields": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "inPredicate": {
+                "enum": ["no", "not_applicable"]
+              },
+              "stampedOnWrite": {
+                "enum": ["no", "not_applicable"]
+              }
+            },
+            "required": ["inPredicate", "stampedOnWrite"]
+          },
+          "then": {
+            "properties": {
+              "ownerFields": {
+                "maxItems": 0
+              },
+              "identityBindingIds": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "stampedOnWrite": {
+                "const": "yes"
+              }
+            },
+            "required": ["stampedOnWrite"]
+          },
+          "then": {
+            "properties": {
+              "identityBindingIds": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "dataObject": {
+      "description": "The persisted object a data access loads or mutates.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "description": "Model, class, or collection name the tracer uses for this object.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "symbolId": {
+          "description": "In-repo definition of the model or class. Omit when the model is dynamic or outside the repository.",
+          "$ref": "#/$defs/id"
+        },
+        "store": {
+          "description": "Table, collection, or bucket name when the tracer saw one. Omit when unknown.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "pattern": "^[A-Za-z0-9_.-]+$"
+        }
+      }
+    },
+    "dataAccess": {
+      "description": "One load or mutation of an application object. Transaction control such as commit is a call with touchesPersistence write and is not a data access unless it names an object. Link callId to the call whose expression carries the predicate or the assignment, not to every wrapper around it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "callId",
+        "operation",
+        "persistenceApi",
+        "object",
+        "paramFlows",
+        "ownershipEvidence",
+        "writtenFields"
+      ],
+      "properties": {
+        "id": {
+          "description": "Id of this data access. A later written field may point back to it as sourceDataAccessId.",
+          "$ref": "#/$defs/id"
+        },
+        "callId": {
+          "description": "Call node that performs this load or mutation.",
+          "$ref": "#/$defs/id"
+        },
+        "operation": {
+          "description": "What happens to the object. load: read one object by a key or unique filter. query: read a set, or a lookup that is not a single-object load. create: insert. update: change an existing object. delete: remove an existing object.",
+          "oneOf": [
+            {
+              "const": "load",
+              "description": "Read one object by a key or a unique filter."
+            },
+            {
+              "const": "query",
+              "description": "Read a set, or a lookup that is not a single-object load."
+            },
+            {
+              "const": "create",
+              "description": "Insert a new object."
+            },
+            {
+              "const": "update",
+              "description": "Change an existing object."
+            },
+            {
+              "const": "delete",
+              "description": "Remove an existing object."
+            }
+          ]
+        },
+        "persistenceApi": {
+          "description": "Which persistence API the call uses. orm: an object mapper or query builder (ActiveRecord, Django ORM, SQLAlchemy, Prisma, TypeORM, Sequelize, and similar). raw_sql: SQL text or a prepared statement. document_store: a document collection API. kv: a key-value or cache API. rpc: persistence that happens in another service. unknown: the API was not classified.",
+          "oneOf": [
+            {
+              "const": "orm",
+              "description": "An object mapper or query builder."
+            },
+            {
+              "const": "raw_sql",
+              "description": "SQL text or a prepared statement."
+            },
+            {
+              "const": "document_store",
+              "description": "A document collection API."
+            },
+            {
+              "const": "kv",
+              "description": "A key-value or cache API."
+            },
+            {
+              "const": "rpc",
+              "description": "A call whose persistence happens in another service."
+            },
+            {
+              "const": "unknown",
+              "description": "The tracer could not classify the persistence API."
+            }
+          ]
+        },
+        "object": {
+          "description": "The model or collection this access loads or mutates.",
+          "$ref": "#/$defs/dataObject"
+        },
+        "paramFlows": {
+          "description": "Request values that flow into this access. Empty when none were established. Empty does not mean the access has no key; it means no request param was tied to a field.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/paramFlow"
+          }
+        },
+        "ownershipEvidence": {
+          "description": "Whether an owner field or the caller appears in the predicate, and whether a write stamps an owner field from the caller.",
+          "$ref": "#/$defs/ownershipEvidence"
+        },
+        "writtenFields": {
+          "description": "Fields assigned by a create or update, in source order. Empty for load, query, and delete. For a create or update that sets no owner field, the list is still the fields that are written, and stampedOnWrite is no.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/writtenField"
+          }
+        },
+        "snippet": {
+          "description": "Optional excerpt of the predicate or the assignment. Include it when it fits so the agent can read the access without the repository.",
+          "$ref": "#/$defs/snippet"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": ["load", "query", "delete"]
+              }
+            },
+            "required": ["operation"]
+          },
+          "then": {
+            "properties": {
+              "ownershipEvidence": {
+                "properties": {
+                  "inPredicate": {
+                    "enum": ["yes", "no", "unknown"]
+                  },
+                  "stampedOnWrite": {
+                    "const": "not_applicable"
+                  }
+                }
+              },
+              "writtenFields": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "create"
+              }
+            },
+            "required": ["operation"]
+          },
+          "then": {
+            "properties": {
+              "ownershipEvidence": {
+                "properties": {
+                  "inPredicate": {
+                    "const": "not_applicable"
+                  },
+                  "stampedOnWrite": {
+                    "enum": ["yes", "no", "unknown"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "update"
+              }
+            },
+            "required": ["operation"]
+          },
+          "then": {
+            "properties": {
+              "ownershipEvidence": {
+                "properties": {
+                  "inPredicate": {
+                    "enum": ["yes", "no", "unknown"]
+                  },
+                  "stampedOnWrite": {
+                    "enum": ["yes", "no", "unknown"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "create"
+              },
+              "ownershipEvidence": {
+                "properties": {
+                  "stampedOnWrite": {
+                    "const": "no"
+                  }
+                },
+                "required": ["stampedOnWrite"]
+              }
+            },
+            "required": ["operation", "ownershipEvidence"]
+          },
+          "then": {
+            "properties": {
+              "writtenFields": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "relatedRoute": {
+      "description": "Another route in this document that shares structure with this one, so an agent can open it and compare. The relation is not a statement that either route checks ownership.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["routeId", "relations", "sharedSymbolIds"],
+      "properties": {
+        "routeId": {
+          "description": "Id of the other route in routes. Not this route.",
+          "$ref": "#/$defs/id"
+        },
+        "relations": {
+          "description": "Why the routes are linked. same_model: their data accesses share an object symbol or store. same_path_prefix: their path templates share a static prefix of at least the first segment. same_handler_module: their handlers are defined in the same file. shared_auth_symbol: their auth chains reference the same symbol. None of these means either route is safe.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "oneOf": [
+              {
+                "const": "same_model",
+                "description": "The routes' data accesses share an object symbol or store."
+              },
+              {
+                "const": "same_path_prefix",
+                "description": "The path templates share a static prefix of at least the first segment."
+              },
+              {
+                "const": "same_handler_module",
+                "description": "The handlers are defined in the same file."
+              },
+              {
+                "const": "shared_auth_symbol",
+                "description": "The auth chains reference the same symbol."
+              }
+            ]
+          }
+        },
+        "sharedSymbolIds": {
+          "description": "Symbols that justify the relations, such as the shared model or the shared auth hook. Empty only when the relation is same_path_prefix and no symbol is shared. Not a judgment about which route checks ownership.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        }
+      }
+    },
+    "omission": {
+      "description": "Something the slice did not include, and why. A recorded external call with its arguments visible is not an omission.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "reason", "detail"],
+      "properties": {
+        "id": {
+          "description": "Id of this omission.",
+          "$ref": "#/$defs/id"
+        },
+        "reason": {
+          "description": "Why the slice stopped. depth: the walk passed maxCallDepth; callId is the deepest included node. ambiguity: the callee is ambiguous and its body was not inlined; callId is that call. node_budget: the walk passed maxCallNodes; callId is the last included node. snippet_budget: an excerpt was omitted or cut to maxSnippetChars; callId is set when the excerpt belongs to a call. This reason alone does not make coverage partial. external: a callee outside the repository was not recorded as its own call node; do not use this when that call is present as a node. callId is the in-repo caller. dynamic_dispatch: the target is computed and was not inlined; callId is that call, and the node's resolution is ambiguous. cycle: the callee is already on the expansion path; callId is the call that would have recursed.",
+          "oneOf": [
+            {
+              "const": "depth",
+              "description": "Expansion stopped because the call exceeded budget.limits.maxCallDepth. callId is the deepest included node."
+            },
+            {
+              "const": "ambiguity",
+              "description": "The callee's resolution is ambiguous, so its body was not inlined. callId is that call."
+            },
+            {
+              "const": "node_budget",
+              "description": "Expansion stopped because the route reached budget.limits.maxCallNodes. callId is the last included node."
+            },
+            {
+              "const": "snippet_budget",
+              "description": "An excerpt was omitted or cut because of the snippet budget. callId is optional. This reason alone does not make coverage partial."
+            },
+            {
+              "const": "external",
+              "description": "A callee outside the repository was not recorded as a call node. Do not use this when the external call is already a node. callId is the in-repo caller."
+            },
+            {
+              "const": "dynamic_dispatch",
+              "description": "The call target is computed at runtime and was not inlined. callId is that call. The node's resolution is ambiguous."
+            },
+            {
+              "const": "cycle",
+              "description": "The callee is already on the expansion path. callId is the call that would have recursed."
+            }
+          ]
+        },
+        "callId": {
+          "description": "Call this omission refers to. Required except for a snippet_budget omission that is not about one call.",
+          "$ref": "#/$defs/id"
+        },
+        "detail": {
+          "description": "One sentence naming what was dropped. Not a finding.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "not": {
+                  "const": "snippet_budget"
+                }
+              }
+            },
+            "required": ["reason"]
+          },
+          "then": {
+            "required": ["callId"]
+          }
+        }
+      ]
+    },
+    "budget": {
+      "description": "What this slice includes, what it dropped, and the limits that were in force. Agents use coverage before treating an absence as exhaustive.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["limits", "counts", "coverage", "omitted"],
+      "properties": {
+        "limits": {
+          "description": "Limits the generator enforced for this route.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maxCallDepth", "maxCallNodes", "maxSnippetChars"],
+          "properties": {
+            "maxCallDepth": {
+              "description": "Maximum call depth the generator would expand. Depth 1 is a root call.",
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxCallNodes": {
+              "description": "Maximum call nodes the generator would keep for this route, counting auth-step calls and handler calls.",
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxSnippetChars": {
+              "description": "Maximum characters the generator would put in one snippet. Must be less than or equal to 480, which is the schema cap.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 480
+            }
+          }
+        },
+        "counts": {
+          "description": "How many of each fact the route actually contains. These must match the arrays and the snippet objects on the route.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["authSteps", "callNodes", "dataAccesses", "snippets"],
+          "properties": {
+            "authSteps": {
+              "description": "Number of authChain items.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "callNodes": {
+              "description": "Number of call nodes under authChain and callGraph, including nested children.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "dataAccesses": {
+              "description": "Number of dataAccesses items.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "snippets": {
+              "description": "Number of snippet objects on this route, including those nested in steps, calls, and data accesses.",
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "coverage": {
+          "description": "Whether each axis is complete enough to treat an observed absence as covering the route. snippet_budget omissions alone do not force partial. A recorded external call does not force partial.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["authChain", "callGraph", "dataFlow"],
+          "properties": {
+            "authChain": {
+              "description": "Coverage of the hooks. complete: every in-scope hook is present and expanded yes, or the generator established there are none. partial: a hook or its body was dropped, ambiguous, or not opened. unknown: the generator cannot say whether other hooks exist.",
+              "$ref": "#/$defs/coverageValue"
+            },
+            "callGraph": {
+              "description": "Coverage of the call walk. complete: every in-scope in-repo callee was expanded, and no depth, ambiguity, node_budget, cycle, dynamic_dispatch, or external omission applies. partial: the walk stopped or a target was ambiguous. unknown: the generator cannot say whether calls are missing. External calls that are present as nodes do not make this partial.",
+              "$ref": "#/$defs/coverageValue"
+            },
+            "dataFlow": {
+              "description": "Coverage of params, predicates, and assignments. complete: every emitted data access has the flows and ownership evidence the generator is willing to stand behind, and no data-bearing call was dropped. partial: a flow or a predicate is missing because the walk stopped or the predicate was not visible. unknown: flows were not assessed.",
+              "$ref": "#/$defs/coverageValue"
+            }
+          }
+        },
+        "omitted": {
+          "description": "Truncations for this route. Empty when nothing in scope was dropped. A snippet_budget entry may be the only omission while coverage stays complete.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/omission"
+          }
+        }
+      }
+    },
+    "gap": {
+      "description": "One surface the generator did not fully model. GraphQL, WebSockets, and dynamic dispatch are first-class gap kinds so they are not silent omissions.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "support", "detail"],
+      "properties": {
+        "id": {
+          "description": "Id of this gap.",
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "description": "Which surface is uncovered. graphql: GraphQL operations and resolvers are not routes in this schema. The HTTP handler that serves a GraphQL endpoint may still appear in routes; its resolvers do not. websocket: WebSocket handlers are not routes. dynamic_dispatch: a computed call target was not inlined; the call node uses resolution ambiguous. unresolved_import: a module or file the tracer needed could not be loaded. metaprogramming: a definition or call introduced by metaprogramming that is not a single dynamic call already covered by dynamic_dispatch. budget: the generator stopped before finishing the repository. Route-local limits go in budget.omitted instead. other: none of the named kinds; detail says what it is.",
+          "oneOf": [
+            {
+              "const": "graphql",
+              "description": "GraphQL operations and resolvers are not modeled as routes. Record this gap when the generator does not slice them."
+            },
+            {
+              "const": "websocket",
+              "description": "WebSocket handlers are not modeled as routes. Record this gap when the generator does not slice them."
+            },
+            {
+              "const": "dynamic_dispatch",
+              "description": "Computed call targets are not fully inlined. Affected calls use resolution ambiguous."
+            },
+            {
+              "const": "unresolved_import",
+              "description": "A module or file the tracer needed could not be loaded."
+            },
+            {
+              "const": "metaprogramming",
+              "description": "A definition or call created by metaprogramming was not expanded, beyond a single dynamic call."
+            },
+            {
+              "const": "budget",
+              "description": "The generator stopped before finishing the repository. Per-route limits are budget.omitted, not this kind."
+            },
+            {
+              "const": "other",
+              "description": "A gap that is none of the named kinds. detail says what it is."
+            }
+          ]
+        },
+        "support": {
+          "description": "How far the generator goes on this surface. unsupported: it does not model the surface; emit one document-level gap even when no instance was found, so a missing route is not read as proof the surface is absent. partial: it records the surface but does not fully expand it.",
+          "oneOf": [
+            {
+              "const": "unsupported",
+              "description": "The generator does not model this surface. Emit the gap even when no instance was detected."
+            },
+            {
+              "const": "partial",
+              "description": "The generator records the surface and does not fully expand it."
+            }
+          ]
+        },
+        "routeId": {
+          "description": "Route this gap is about, when it is local to one route. Omit for a document-level gap.",
+          "$ref": "#/$defs/id"
+        },
+        "range": {
+          "description": "File and lines that show the uncovered surface, when the generator has a site.",
+          "$ref": "#/$defs/sourceRange"
+        },
+        "detail": {
+          "description": "One or two sentences naming the limitation. Not a finding.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        }
+      }
+    },
+    "registration": {
+      "description": "Where the route is declared. This is binding time, not a per-request step.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mechanism", "range"],
+      "properties": {
+        "mechanism": {
+          "description": "How the route is declared. decorator: an annotation on the handler. route_table: an imperative call or a central list, such as Express router.METHOD, Django urlpatterns, or a Rails match line. resource_dsl: a resource or scope macro that expands to one or more routes; this entry is still one method and one path. unknown: the declaration style was not classified.",
+          "oneOf": [
+            {
+              "const": "decorator",
+              "description": "The route is declared by an annotation on the handler."
+            },
+            {
+              "const": "route_table",
+              "description": "The route is declared by an imperative call or a central list."
+            },
+            {
+              "const": "resource_dsl",
+              "description": "The route comes from a resource or scope macro. This entry is still one method and one path."
+            },
+            {
+              "const": "unknown",
+              "description": "The declaration style was not classified."
+            }
+          ]
+        },
+        "range": {
+          "description": "File and lines of the declaration.",
+          "$ref": "#/$defs/sourceRange"
+        },
+        "snippet": {
+          "description": "Optional excerpt of the declaration, so the method and path are visible without the repository.",
+          "$ref": "#/$defs/snippet"
+        }
+      }
+    },
+    "handler": {
+      "description": "The function or method that runs for this route after the auth chain.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbolId", "qualifiedName", "range"],
+      "properties": {
+        "symbolId": {
+          "description": "Definition of the handler in the symbol index.",
+          "$ref": "#/$defs/id"
+        },
+        "qualifiedName": {
+          "description": "Qualified name of the handler. Denormalized so a slice is readable before joining the index. Must match the symbol.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "range": {
+          "description": "File and lines of the handler, including the body. Must match the symbol range.",
+          "$ref": "#/$defs/sourceRange"
+        }
+      }
+    },
+    "route": {
+      "description": "One HTTP route and the code that runs for it: declaration, auth hooks, handler, callees that read or write data, and the request values and identity those callees see. No verdict and no fix.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "language",
+        "framework",
+        "httpMethod",
+        "pathTemplate",
+        "registration",
+        "handler",
+        "entryParams",
+        "identityBindings",
+        "authChain",
+        "callGraph",
+        "dataAccesses",
+        "relatedRoutes",
+        "budget"
+      ],
+      "properties": {
+        "id": {
+          "description": "Id of this route. relatedRoutes and gaps refer to it.",
+          "$ref": "#/$defs/id"
+        },
+        "language": {
+          "description": "Language of the handler.",
+          "$ref": "#/$defs/language"
+        },
+        "framework": {
+          "description": "Framework that registers this route.",
+          "$ref": "#/$defs/framework"
+        },
+        "frameworkDetail": {
+          "description": "Concrete framework or layer name. Required when framework is other. Optional when a named framework has a layer worth naming, such as Django REST framework on django.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "httpMethod": {
+          "description": "HTTP method this entry is registered for.",
+          "$ref": "#/$defs/httpMethod"
+        },
+        "pathTemplate": {
+          "description": "Externally exposed path after router prefixes are joined. Parameters use {name}. No trailing slash except for the root path /.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300,
+          "pattern": "^/(?:(?:[A-Za-z0-9._~-]+|\\{[A-Za-z_][A-Za-z0-9_]*\\})(?:/(?:[A-Za-z0-9._~-]+|\\{[A-Za-z_][A-Za-z0-9_]*\\}))*)?$"
+        },
+        "registration": {
+          "description": "Declaration of the route.",
+          "$ref": "#/$defs/registration"
+        },
+        "handler": {
+          "description": "Handler that runs after the auth chain.",
+          "$ref": "#/$defs/handler"
+        },
+        "entryParams": {
+          "description": "Request values this route reads. Object ids and other inputs are both included. namesObject yes selects the values that can name a persisted object.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entryParam"
+          }
+        },
+        "identityBindings": {
+          "description": "Principals in scope for the handler. Empty when the slice found none. A present binding means authentication produced an identity; it does not mean the object was constrained to that identity.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identityBinding"
+          }
+        },
+        "authChain": {
+          "description": "Hooks that run for this route, in execution order, including hooks defined outside the handler file. Empty when the generator found none. Read coverage.authChain before treating empty as proof that no hook exists. Framework auth dependencies are steps here and are not repeated as callGraph roots.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/authStep"
+          }
+        },
+        "callGraph": {
+          "description": "Calls written in the handler, as a tree, in execution order. Children are calls in an opened in-repo callee. Shared auth stays in authChain even when its source is elsewhere.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/callNode"
+          }
+        },
+        "dataAccesses": {
+          "description": "Loads and mutations of application objects performed by calls in this slice. Empty when this route does not touch an object. Commit and similar transaction calls stay in the call graph only.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dataAccess"
+          }
+        },
+        "relatedRoutes": {
+          "description": "Other routes in this document that share a model, a path prefix, a handler file, or an auth symbol. An agent opens those routes to compare predicates. The link is not a finding and does not say which route checks ownership.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/relatedRoute"
+          }
+        },
+        "budget": {
+          "description": "Inclusion, truncation, and coverage for this route.",
+          "$ref": "#/$defs/budget"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "framework": {
+                "const": "other"
+              }
+            },
+            "required": ["framework"]
+          },
+          "then": {
+            "required": ["frameworkDetail"]
+          }
+        }
+      ]
+    }
+  }
+}

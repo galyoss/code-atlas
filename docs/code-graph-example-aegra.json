@@ -1,0 +1,2170 @@
+{
+  "schemaVersion": "1.0.0",
+  "illustrative": true,
+  "note": "Hand-encoded from aegra/aegra tag v0.11.0 commit 46055c0b9adffe51fb168974f79dfadaa6edd612. Not a scanner run and not a finding. Both routes are self-dispatching, so apply_auth_enforcement adds no second handle_event. Coverage is partial because auth handlers are dynamic.",
+  "generator": {
+    "name": "hand-authored-example",
+    "version": "1.0.0"
+  },
+  "repo": {
+    "name": "aegra",
+    "revision": "46055c0b9adffe51fb168974f79dfadaa6edd612",
+    "vcs": "git",
+    "remote": "https://github.com/aegra/aegra"
+  },
+  "languages": [
+    "python"
+  ],
+  "frameworks": [
+    "fastapi"
+  ],
+  "generatedAt": "2026-11-16T09:05:00Z",
+  "unresolvedGaps": [
+    {
+      "id": "gap_graphql",
+      "kind": "graphql",
+      "support": "unsupported",
+      "detail": "This encoding does not slice GraphQL operations. aegra v0.11.0 exposes HTTP routes; resolvers are not in this document."
+    },
+    {
+      "id": "gap_websocket",
+      "kind": "websocket",
+      "support": "unsupported",
+      "detail": "This encoding does not slice WebSocket handlers. The included routes use ordinary HTTP and server-sent events."
+    },
+    {
+      "id": "gap_dynamic_dispatch",
+      "kind": "dynamic_dispatch",
+      "support": "partial",
+      "detail": "Configured auth handlers are recorded as resolution ambiguous and are not inlined. See handle_event and LangGraphAuthBackend.authenticate."
+    }
+  ],
+  "symbolIndex": [
+    {
+      "id": "sym_user",
+      "language": "python",
+      "kind": "class",
+      "name": "User",
+      "qualifiedName": "aegra_api.models.auth.User",
+      "signature": "class User(BaseModel): identity: str",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/models/auth.py",
+        "startLine": 8,
+        "endLine": 42
+      }
+    },
+    {
+      "id": "sym_extract_user_data",
+      "language": "python",
+      "kind": "function",
+      "name": "_extract_user_data",
+      "qualifiedName": "aegra_api.core.auth_deps._extract_user_data",
+      "signature": "def _extract_user_data(user_obj: Any) -> dict[str, Any]",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+        "startLine": 15,
+        "endLine": 36
+      }
+    },
+    {
+      "id": "sym_to_user_model",
+      "language": "python",
+      "kind": "function",
+      "name": "_to_user_model",
+      "qualifiedName": "aegra_api.core.auth_deps._to_user_model",
+      "signature": "def _to_user_model(user: Any) -> User",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+        "startLine": 39,
+        "endLine": 59
+      }
+    },
+    {
+      "id": "sym_require_auth",
+      "language": "python",
+      "kind": "function",
+      "name": "require_auth",
+      "qualifiedName": "aegra_api.core.auth_deps.require_auth",
+      "signature": "async def require_auth(request: Request) -> User",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+        "startLine": 62,
+        "endLine": 105
+      }
+    },
+    {
+      "id": "sym_get_current_user",
+      "language": "python",
+      "kind": "function",
+      "name": "get_current_user",
+      "qualifiedName": "aegra_api.core.auth_deps.get_current_user",
+      "signature": "def get_current_user(request: Request) -> User",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+        "startLine": 115,
+        "endLine": 145
+      }
+    },
+    {
+      "id": "sym_get_auth_backend",
+      "language": "python",
+      "kind": "function",
+      "name": "get_auth_backend",
+      "qualifiedName": "aegra_api.core.auth_middleware.get_auth_backend",
+      "signature": "def get_auth_backend() -> AuthenticationBackend",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/core/auth_middleware.py",
+        "startLine": 290,
+        "endLine": 306
+      }
+    },
+    {
+      "id": "sym_authenticate",
+      "language": "python",
+      "kind": "method",
+      "name": "authenticate",
+      "qualifiedName": "aegra_api.core.auth_middleware.LangGraphAuthBackend.authenticate",
+      "signature": "async def authenticate(self, conn: HTTPConnection) -> tuple[AuthCredentials, BaseUser] | None",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/core/auth_middleware.py",
+        "startLine": 217,
+        "endLine": 286
+      }
+    },
+    {
+      "id": "sym_handle_event",
+      "language": "python",
+      "kind": "function",
+      "name": "handle_event",
+      "qualifiedName": "aegra_api.core.auth_handlers.handle_event",
+      "signature": "async def handle_event(ctx: AuthContextWrapper | None, value: dict[str, Any]) -> dict[str, Any] | None",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/core/auth_handlers.py",
+        "startLine": 62,
+        "endLine": 158
+      }
+    },
+    {
+      "id": "sym_build_auth_context",
+      "language": "python",
+      "kind": "function",
+      "name": "build_auth_context",
+      "qualifiedName": "aegra_api.core.auth_handlers.build_auth_context",
+      "signature": "def build_auth_context(user: User, resource: str, action: str) -> AuthContextWrapper",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/core/auth_handlers.py",
+        "startLine": 213,
+        "endLine": 248
+      }
+    },
+    {
+      "id": "sym_build_metadata_filter",
+      "language": "python",
+      "kind": "function",
+      "name": "build_metadata_filter",
+      "qualifiedName": "aegra_api.core.auth_filters.build_metadata_filter",
+      "signature": "def build_metadata_filter(column: InstrumentedAttribute[Any], filters: dict[str, Any] | None) -> ColumnElement[bool] | None",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/core/auth_filters.py",
+        "startLine": 33,
+        "endLine": 56
+      }
+    },
+    {
+      "id": "sym_thread",
+      "language": "python",
+      "kind": "class",
+      "name": "Thread",
+      "qualifiedName": "aegra_api.core.orm.Thread",
+      "signature": "class Thread(Base): thread_id: Mapped[str]; user_id: Mapped[str]",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/core/orm.py",
+        "startLine": 140,
+        "endLine": 152
+      }
+    },
+    {
+      "id": "sym_assistant",
+      "language": "python",
+      "kind": "class",
+      "name": "Assistant",
+      "qualifiedName": "aegra_api.core.orm.Assistant",
+      "signature": "class Assistant(Base): assistant_id: Mapped[str]; user_id: Mapped[str]",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/core/orm.py",
+        "startLine": 94,
+        "endLine": 121
+      }
+    },
+    {
+      "id": "sym_run",
+      "language": "python",
+      "kind": "class",
+      "name": "Run",
+      "qualifiedName": "aegra_api.core.orm.Run",
+      "signature": "class Run(Base): run_id: Mapped[str]; thread_id: Mapped[str]; user_id: Mapped[str]",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/core/orm.py",
+        "startLine": 155,
+        "endLine": 192
+      }
+    },
+    {
+      "id": "sym_run_create",
+      "language": "python",
+      "kind": "class",
+      "name": "RunCreate",
+      "qualifiedName": "aegra_api.models.runs.RunCreate",
+      "signature": "class RunCreate(BaseModel): assistant_id: str; input: dict[str, Any] | None",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/models/runs.py",
+        "startLine": 35,
+        "endLine": 163
+      }
+    },
+    {
+      "id": "sym_apply_create_run_auth",
+      "language": "python",
+      "kind": "function",
+      "name": "_apply_create_run_auth",
+      "qualifiedName": "aegra_api.api.runs._apply_create_run_auth",
+      "signature": "async def _apply_create_run_auth(user: User, thread_id: str, request: RunCreate) -> None",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+        "startLine": 86,
+        "endLine": 108
+      }
+    },
+    {
+      "id": "sym_create_run",
+      "language": "python",
+      "kind": "function",
+      "name": "create_run",
+      "qualifiedName": "aegra_api.api.runs.create_run",
+      "signature": "async def create_run(thread_id: str, request: RunCreate, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)) -> Run",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+        "startLine": 112,
+        "endLine": 133
+      }
+    },
+    {
+      "id": "sym_prepare_run",
+      "language": "python",
+      "kind": "function",
+      "name": "_prepare_run",
+      "qualifiedName": "aegra_api.services.run_preparation._prepare_run",
+      "signature": "async def _prepare_run(session: AsyncSession, thread_id: str, request: RunCreate, user: User, *, initial_status: str) -> tuple[str, Run, RunJob]",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/services/run_preparation.py",
+        "startLine": 249,
+        "endLine": 372
+      }
+    },
+    {
+      "id": "sym_get_thread",
+      "language": "python",
+      "kind": "function",
+      "name": "get_thread",
+      "qualifiedName": "aegra_api.api.threads.get_thread",
+      "signature": "async def get_thread(thread_id: str, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)) -> Thread",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/api/threads.py",
+        "startLine": 317,
+        "endLine": 342
+      }
+    },
+    {
+      "id": "sym_serialize_thread",
+      "language": "python",
+      "kind": "function",
+      "name": "_serialize_thread",
+      "qualifiedName": "aegra_api.api.threads._serialize_thread",
+      "signature": "def _serialize_thread(thread_orm: ThreadORM, default_metadata: dict[str, Any] | None = None) -> Thread",
+      "range": {
+        "file": "libs/aegra-api/src/aegra_api/api/threads.py",
+        "startLine": 107,
+        "endLine": 168
+      }
+    }
+  ],
+  "routes": [
+    {
+      "id": "route_post_thread_runs",
+      "language": "python",
+      "framework": "fastapi",
+      "httpMethod": "POST",
+      "pathTemplate": "/threads/{thread_id}/runs",
+      "registration": {
+        "mechanism": "decorator",
+        "range": {
+          "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+          "startLine": 111,
+          "endLine": 111
+        },
+        "snippet": {
+          "text": "@router.post(\"/threads/{thread_id}/runs\", response_model=Run, responses={**NOT_FOUND, **CONFLICT})",
+          "truncated": false,
+          "range": {
+            "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+            "startLine": 111,
+            "endLine": 111
+          }
+        }
+      },
+      "handler": {
+        "symbolId": "sym_create_run",
+        "qualifiedName": "aegra_api.api.runs.create_run",
+        "range": {
+          "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+          "startLine": 112,
+          "endLine": 133
+        }
+      },
+      "entryParams": [
+        {
+          "id": "param_cr_thread_id",
+          "name": "thread_id",
+          "location": "path",
+          "pathInRequest": "path.thread_id",
+          "presence": "required",
+          "valueShape": "scalar",
+          "namesObject": "yes",
+          "reads": [
+            {
+              "range": {
+                "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+                "startLine": 113,
+                "endLine": 113
+              },
+              "symbolId": "sym_create_run",
+              "expression": "thread_id"
+            },
+            {
+              "range": {
+                "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+                "startLine": 125,
+                "endLine": 125
+              },
+              "symbolId": "sym_create_run",
+              "expression": "thread_id"
+            },
+            {
+              "range": {
+                "file": "libs/aegra-api/src/aegra_api/services/run_preparation.py",
+                "startLine": 350,
+                "endLine": 350
+              },
+              "symbolId": "sym_prepare_run",
+              "expression": "thread_id"
+            }
+          ]
+        },
+        {
+          "id": "param_cr_request",
+          "name": "request",
+          "location": "body",
+          "pathInRequest": "body",
+          "presence": "required",
+          "valueShape": "object",
+          "namesObject": "no",
+          "typeSymbolId": "sym_run_create",
+          "reads": [
+            {
+              "range": {
+                "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+                "startLine": 114,
+                "endLine": 114
+              },
+              "symbolId": "sym_create_run",
+              "expression": "request"
+            }
+          ]
+        },
+        {
+          "id": "param_cr_assistant_id",
+          "name": "assistant_id",
+          "location": "body",
+          "pathInRequest": "body.assistant_id",
+          "presence": "required",
+          "valueShape": "scalar",
+          "namesObject": "yes",
+          "reads": [
+            {
+              "range": {
+                "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+                "startLine": 107,
+                "endLine": 107
+              },
+              "symbolId": "sym_apply_create_run_auth",
+              "expression": "request.assistant_id"
+            },
+            {
+              "range": {
+                "file": "libs/aegra-api/src/aegra_api/services/run_preparation.py",
+                "startLine": 277,
+                "endLine": 277
+              },
+              "symbolId": "sym_prepare_run",
+              "expression": "request.assistant_id"
+            }
+          ]
+        },
+        {
+          "id": "param_cr_input",
+          "name": "input",
+          "location": "body",
+          "pathInRequest": "body.input",
+          "presence": "optional",
+          "valueShape": "object",
+          "namesObject": "no",
+          "reads": [
+            {
+              "range": {
+                "file": "libs/aegra-api/src/aegra_api/services/run_preparation.py",
+                "startLine": 353,
+                "endLine": 353
+              },
+              "symbolId": "sym_prepare_run",
+              "expression": "request.input"
+            }
+          ]
+        },
+        {
+          "id": "param_cr_headers",
+          "name": "headers",
+          "location": "header",
+          "pathInRequest": "header",
+          "presence": "unknown",
+          "valueShape": "object",
+          "namesObject": "no",
+          "reads": [
+            {
+              "range": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_middleware.py",
+                "startLine": 254,
+                "endLine": 257
+              },
+              "symbolId": "sym_authenticate",
+              "expression": "conn.headers"
+            }
+          ]
+        }
+      ],
+      "identityBindings": [
+        {
+          "id": "bind_cr_user",
+          "name": "user",
+          "kind": "user",
+          "presence": "required",
+          "expression": "user: User = Depends(get_current_user)",
+          "producedByAuthStepId": "auth_cr_current_user",
+          "typeSymbolId": "sym_user",
+          "range": {
+            "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+            "startLine": 115,
+            "endLine": 115
+          }
+        }
+      ],
+      "authChain": [
+        {
+          "id": "auth_cr_require",
+          "symbolId": "sym_require_auth",
+          "qualifiedName": "aegra_api.core.auth_deps.require_auth",
+          "range": {
+            "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+            "startLine": 62,
+            "endLine": 105
+          },
+          "kind": "authentication",
+          "mechanism": "dependency",
+          "scope": "router",
+          "applicability": "always",
+          "onFailure": "unknown",
+          "bindsObjectToCaller": "no",
+          "expanded": "yes",
+          "calls": [
+            {
+              "id": "call_cr_scope_get",
+              "order": 1,
+              "depth": 1,
+              "calleeName": "get",
+              "qualifiedName": "request.scope.get",
+              "resolution": "external",
+              "touchesPersistence": "none",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 77,
+                "endLine": 77
+              },
+              "children": [],
+              "argumentsExcerpt": "request.scope.get(_AUTH_RESULT_SCOPE_KEY)"
+            },
+            {
+              "id": "call_cr_backend",
+              "order": 2,
+              "depth": 1,
+              "calleeName": "get_auth_backend",
+              "qualifiedName": "aegra_api.core.auth_middleware.get_auth_backend",
+              "resolution": "resolved",
+              "touchesPersistence": "none",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 81,
+                "endLine": 81
+              },
+              "children": [],
+              "symbolId": "sym_get_auth_backend",
+              "argumentsExcerpt": "get_auth_backend()"
+            },
+            {
+              "id": "call_cr_authenticate",
+              "order": 3,
+              "depth": 1,
+              "calleeName": "authenticate",
+              "qualifiedName": "aegra_api.core.auth_middleware.LangGraphAuthBackend.authenticate",
+              "resolution": "resolved",
+              "touchesPersistence": "none",
+              "expanded": "partial",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 84,
+                "endLine": 84
+              },
+              "children": [
+                {
+                  "id": "call_cr_auth_handler",
+                  "order": 4,
+                  "depth": 2,
+                  "calleeName": "handler",
+                  "qualifiedName": "auth._authenticate_handler",
+                  "resolution": "ambiguous",
+                  "touchesPersistence": "unknown",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_middleware.py",
+                    "startLine": 260,
+                    "endLine": 260
+                  },
+                  "children": [],
+                  "argumentsExcerpt": "await self.auth_instance._authenticate_handler(headers)",
+                  "candidates": []
+                }
+              ],
+              "symbolId": "sym_authenticate",
+              "argumentsExcerpt": "await backend.authenticate(request)",
+              "snippet": {
+                "text": "if self.auth_instance is None:\n    user_data = {\"identity\": \"anonymous\", \"is_authenticated\": False}\n    return credentials, user\nuser_data = await self.auth_instance._authenticate_handler(headers)",
+                "truncated": true,
+                "range": {
+                  "file": "libs/aegra-api/src/aegra_api/core/auth_middleware.py",
+                  "startLine": 233,
+                  "endLine": 260
+                }
+              }
+            },
+            {
+              "id": "call_cr_http_auth",
+              "order": 5,
+              "depth": 1,
+              "calleeName": "HTTPException",
+              "qualifiedName": "fastapi.HTTPException",
+              "resolution": "external",
+              "touchesPersistence": "none",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 86,
+                "endLine": 86
+              },
+              "children": [],
+              "argumentsExcerpt": "HTTPException(status_code=401, detail=str(e))"
+            },
+            {
+              "id": "call_cr_http_missing",
+              "order": 6,
+              "depth": 1,
+              "calleeName": "HTTPException",
+              "qualifiedName": "fastapi.HTTPException",
+              "resolution": "external",
+              "touchesPersistence": "none",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 91,
+                "endLine": 91
+              },
+              "children": [],
+              "argumentsExcerpt": "HTTPException(status_code=401, detail=\"Authentication required\")"
+            },
+            {
+              "id": "call_cr_hasattr",
+              "order": 7,
+              "depth": 1,
+              "calleeName": "hasattr",
+              "qualifiedName": "hasattr",
+              "resolution": "external",
+              "touchesPersistence": "none",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 100,
+                "endLine": 100
+              },
+              "children": [],
+              "argumentsExcerpt": "hasattr(request, \"user\")"
+            },
+            {
+              "id": "call_cr_to_user",
+              "order": 8,
+              "depth": 1,
+              "calleeName": "_to_user_model",
+              "qualifiedName": "aegra_api.core.auth_deps._to_user_model",
+              "resolution": "resolved",
+              "touchesPersistence": "none",
+              "expanded": "yes",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 103,
+                "endLine": 103
+              },
+              "children": [
+                {
+                  "id": "call_cr_extract",
+                  "order": 9,
+                  "depth": 2,
+                  "calleeName": "_extract_user_data",
+                  "qualifiedName": "aegra_api.core.auth_deps._extract_user_data",
+                  "resolution": "resolved",
+                  "touchesPersistence": "none",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                    "startLine": 48,
+                    "endLine": 48
+                  },
+                  "children": [],
+                  "symbolId": "sym_extract_user_data",
+                  "argumentsExcerpt": "_extract_user_data(user)"
+                },
+                {
+                  "id": "call_cr_http_identity",
+                  "order": 10,
+                  "depth": 2,
+                  "calleeName": "HTTPException",
+                  "qualifiedName": "fastapi.HTTPException",
+                  "resolution": "external",
+                  "touchesPersistence": "none",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                    "startLine": 52,
+                    "endLine": 52
+                  },
+                  "children": [],
+                  "argumentsExcerpt": "HTTPException(status_code=401, detail=\"User identity not provided\")"
+                },
+                {
+                  "id": "call_cr_display_get",
+                  "order": 11,
+                  "depth": 2,
+                  "calleeName": "get",
+                  "qualifiedName": "dict.get",
+                  "resolution": "external",
+                  "touchesPersistence": "none",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                    "startLine": 55,
+                    "endLine": 55
+                  },
+                  "children": [],
+                  "argumentsExcerpt": "user_data.get(\"display_name\")"
+                },
+                {
+                  "id": "call_cr_user_init",
+                  "order": 12,
+                  "depth": 2,
+                  "calleeName": "User",
+                  "qualifiedName": "aegra_api.models.auth.User",
+                  "resolution": "resolved",
+                  "touchesPersistence": "none",
+                  "expanded": "yes",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                    "startLine": 59,
+                    "endLine": 59
+                  },
+                  "children": [],
+                  "symbolId": "sym_user",
+                  "argumentsExcerpt": "User(**user_data)"
+                }
+              ],
+              "symbolId": "sym_to_user_model",
+              "argumentsExcerpt": "_to_user_model(user)"
+            }
+          ],
+          "snippet": {
+            "text": "if result is None:\n    raise HTTPException(status_code=401, detail=\"Authentication required\")",
+            "truncated": true,
+            "range": {
+              "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+              "startLine": 88,
+              "endLine": 91
+            }
+          }
+        },
+        {
+          "id": "auth_cr_current_user",
+          "symbolId": "sym_get_current_user",
+          "qualifiedName": "aegra_api.core.auth_deps.get_current_user",
+          "range": {
+            "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+            "startLine": 115,
+            "endLine": 145
+          },
+          "kind": "authentication",
+          "mechanism": "dependency",
+          "scope": "route",
+          "applicability": "always",
+          "onFailure": "abort",
+          "bindsObjectToCaller": "no",
+          "expanded": "yes",
+          "calls": [
+            {
+              "id": "call_cr_get_scope",
+              "order": 13,
+              "depth": 1,
+              "calleeName": "get",
+              "qualifiedName": "request.scope.get",
+              "resolution": "external",
+              "touchesPersistence": "none",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 137,
+                "endLine": 137
+              },
+              "children": [],
+              "argumentsExcerpt": "request.scope.get(\"user\")"
+            },
+            {
+              "id": "call_cr_get_hasattr",
+              "order": 14,
+              "depth": 1,
+              "calleeName": "hasattr",
+              "qualifiedName": "hasattr",
+              "resolution": "external",
+              "touchesPersistence": "none",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 140,
+                "endLine": 140
+              },
+              "children": [],
+              "argumentsExcerpt": "hasattr(request, \"user\")"
+            },
+            {
+              "id": "call_cr_get_http",
+              "order": 15,
+              "depth": 1,
+              "calleeName": "HTTPException",
+              "qualifiedName": "fastapi.HTTPException",
+              "resolution": "external",
+              "touchesPersistence": "none",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 141,
+                "endLine": 141
+              },
+              "children": [],
+              "argumentsExcerpt": "HTTPException(status_code=401, detail=\"Authentication required\")"
+            },
+            {
+              "id": "call_cr_get_to_user",
+              "order": 16,
+              "depth": 1,
+              "calleeName": "_to_user_model",
+              "qualifiedName": "aegra_api.core.auth_deps._to_user_model",
+              "resolution": "resolved",
+              "touchesPersistence": "none",
+              "expanded": "yes",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 145,
+                "endLine": 145
+              },
+              "children": [
+                {
+                  "id": "call_cr_get_extract",
+                  "order": 17,
+                  "depth": 2,
+                  "calleeName": "_extract_user_data",
+                  "qualifiedName": "aegra_api.core.auth_deps._extract_user_data",
+                  "resolution": "resolved",
+                  "touchesPersistence": "none",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                    "startLine": 48,
+                    "endLine": 48
+                  },
+                  "children": [],
+                  "symbolId": "sym_extract_user_data",
+                  "argumentsExcerpt": "_extract_user_data(user)"
+                },
+                {
+                  "id": "call_cr_get_http_identity",
+                  "order": 18,
+                  "depth": 2,
+                  "calleeName": "HTTPException",
+                  "qualifiedName": "fastapi.HTTPException",
+                  "resolution": "external",
+                  "touchesPersistence": "none",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                    "startLine": 52,
+                    "endLine": 52
+                  },
+                  "children": [],
+                  "argumentsExcerpt": "HTTPException(status_code=401, detail=\"User identity not provided\")"
+                },
+                {
+                  "id": "call_cr_get_display_get",
+                  "order": 19,
+                  "depth": 2,
+                  "calleeName": "get",
+                  "qualifiedName": "dict.get",
+                  "resolution": "external",
+                  "touchesPersistence": "none",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                    "startLine": 55,
+                    "endLine": 55
+                  },
+                  "children": [],
+                  "argumentsExcerpt": "user_data.get(\"display_name\")"
+                },
+                {
+                  "id": "call_cr_get_user_init",
+                  "order": 20,
+                  "depth": 2,
+                  "calleeName": "User",
+                  "qualifiedName": "aegra_api.models.auth.User",
+                  "resolution": "resolved",
+                  "touchesPersistence": "none",
+                  "expanded": "yes",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                    "startLine": 59,
+                    "endLine": 59
+                  },
+                  "children": [],
+                  "symbolId": "sym_user",
+                  "argumentsExcerpt": "User(**user_data)"
+                }
+              ],
+              "symbolId": "sym_to_user_model",
+              "argumentsExcerpt": "_to_user_model(user)"
+            }
+          ],
+          "snippet": {
+            "text": "user = request.scope.get(\"user\")\nif user is None:\n    raise HTTPException(status_code=401, detail=\"Authentication required\")\nreturn _to_user_model(user)",
+            "truncated": true,
+            "range": {
+              "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+              "startLine": 137,
+              "endLine": 145
+            }
+          }
+        },
+        {
+          "id": "auth_cr_owner_compare",
+          "symbolId": "sym_create_run",
+          "qualifiedName": "aegra_api.api.runs.create_run",
+          "range": {
+            "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+            "startLine": 126,
+            "endLine": 127
+          },
+          "kind": "authorization",
+          "mechanism": "inline",
+          "scope": "inline",
+          "applicability": "conditional",
+          "onFailure": "abort",
+          "bindsObjectToCaller": "yes",
+          "expanded": "yes",
+          "calls": [],
+          "snippet": {
+            "text": "    if existing_thread and existing_thread.user_id != user.identity:\n        raise HTTPException(404, f\"Thread '{thread_id}' not found\")",
+            "truncated": false,
+            "range": {
+              "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+              "startLine": 126,
+              "endLine": 127
+            }
+          }
+        },
+        {
+          "id": "auth_cr_apply",
+          "symbolId": "sym_apply_create_run_auth",
+          "qualifiedName": "aegra_api.api.runs._apply_create_run_auth",
+          "range": {
+            "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+            "startLine": 86,
+            "endLine": 108
+          },
+          "kind": "authorization",
+          "mechanism": "inline",
+          "scope": "inline",
+          "applicability": "always",
+          "onFailure": "unknown",
+          "bindsObjectToCaller": "unknown",
+          "expanded": "partial",
+          "calls": [],
+          "callId": "call_cr_apply",
+          "snippet": {
+            "text": "    ctx = build_auth_context(user, \"threads\", \"create_run\")\n    value = {**request.model_dump(), \"thread_id\": thread_id}\n    filters = await handle_event(ctx, value)",
+            "truncated": false,
+            "range": {
+              "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+              "startLine": 91,
+              "endLine": 93
+            }
+          }
+        }
+      ],
+      "callGraph": [
+        {
+          "id": "call_cr_scalar",
+          "order": 21,
+          "depth": 1,
+          "calleeName": "scalar",
+          "qualifiedName": "sqlalchemy.ext.asyncio.AsyncSession.scalar",
+          "resolution": "external",
+          "touchesPersistence": "read",
+          "expanded": "no",
+          "callSite": {
+            "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+            "startLine": 125,
+            "endLine": 125
+          },
+          "children": [],
+          "argumentsExcerpt": "session.scalar(select(ThreadORM).where(ThreadORM.thread_id == thread_id))"
+        },
+        {
+          "id": "call_cr_apply",
+          "order": 22,
+          "depth": 1,
+          "calleeName": "_apply_create_run_auth",
+          "qualifiedName": "aegra_api.api.runs._apply_create_run_auth",
+          "resolution": "resolved",
+          "touchesPersistence": "none",
+          "expanded": "partial",
+          "callSite": {
+            "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+            "startLine": 129,
+            "endLine": 129
+          },
+          "children": [
+            {
+              "id": "call_cr_handle_threads",
+              "order": 23,
+              "depth": 2,
+              "calleeName": "handle_event",
+              "qualifiedName": "aegra_api.core.auth_handlers.handle_event",
+              "resolution": "resolved",
+              "touchesPersistence": "unknown",
+              "expanded": "partial",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+                "startLine": 93,
+                "endLine": 93
+              },
+              "children": [
+                {
+                  "id": "call_cr_threads_handler",
+                  "order": 24,
+                  "depth": 3,
+                  "calleeName": "handler",
+                  "qualifiedName": "auth.on handler",
+                  "resolution": "ambiguous",
+                  "touchesPersistence": "unknown",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_handlers.py",
+                    "startLine": 126,
+                    "endLine": 126
+                  },
+                  "children": [],
+                  "argumentsExcerpt": "await handler(ctx=auth_ctx, value=value)",
+                  "candidates": []
+                }
+              ],
+              "symbolId": "sym_handle_event",
+              "argumentsExcerpt": "await handle_event(ctx, value)"
+            },
+            {
+              "id": "call_cr_handle_assistants",
+              "order": 25,
+              "depth": 2,
+              "calleeName": "handle_event",
+              "qualifiedName": "aegra_api.core.auth_handlers.handle_event",
+              "resolution": "resolved",
+              "touchesPersistence": "unknown",
+              "expanded": "partial",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+                "startLine": 105,
+                "endLine": 108
+              },
+              "children": [
+                {
+                  "id": "call_cr_assistants_handler",
+                  "order": 26,
+                  "depth": 3,
+                  "calleeName": "handler",
+                  "qualifiedName": "auth.on handler",
+                  "resolution": "ambiguous",
+                  "touchesPersistence": "unknown",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_handlers.py",
+                    "startLine": 126,
+                    "endLine": 126
+                  },
+                  "children": [],
+                  "argumentsExcerpt": "await handler(ctx=auth_ctx, value=value)",
+                  "candidates": []
+                }
+              ],
+              "symbolId": "sym_handle_event",
+              "argumentsExcerpt": "await handle_event(build_auth_context(user, \"assistants\", \"read\"), {\"assistant_id\": request.assistant_id})"
+            }
+          ],
+          "symbolId": "sym_apply_create_run_auth",
+          "argumentsExcerpt": "_apply_create_run_auth(user, thread_id, request)"
+        },
+        {
+          "id": "call_cr_prepare",
+          "order": 27,
+          "depth": 1,
+          "calleeName": "_prepare_run",
+          "qualifiedName": "aegra_api.services.run_preparation._prepare_run",
+          "resolution": "resolved",
+          "touchesPersistence": "read_write",
+          "expanded": "partial",
+          "callSite": {
+            "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+            "startLine": 131,
+            "endLine": 131
+          },
+          "children": [
+            {
+              "id": "call_cr_assistant_scalar",
+              "order": 28,
+              "depth": 2,
+              "calleeName": "scalar",
+              "qualifiedName": "sqlalchemy.ext.asyncio.AsyncSession.scalar",
+              "resolution": "external",
+              "touchesPersistence": "read",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/services/run_preparation.py",
+                "startLine": 295,
+                "endLine": 295
+              },
+              "children": [],
+              "argumentsExcerpt": "session.scalar(select(AssistantORM).where(AssistantORM.assistant_id == resolved_assistant_id, or_(AssistantORM.user_id == user.identity, AssistantORM.user_id == \"system\")))"
+            },
+            {
+              "id": "call_cr_run_init",
+              "order": 29,
+              "depth": 2,
+              "calleeName": "Run",
+              "qualifiedName": "aegra_api.core.orm.Run",
+              "resolution": "resolved",
+              "touchesPersistence": "none",
+              "expanded": "yes",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/services/run_preparation.py",
+                "startLine": 348,
+                "endLine": 362
+              },
+              "children": [],
+              "symbolId": "sym_run",
+              "argumentsExcerpt": "RunORM(..., thread_id=thread_id, user_id=user.identity, input=request.input, status=initial_status)"
+            },
+            {
+              "id": "call_cr_add",
+              "order": 30,
+              "depth": 2,
+              "calleeName": "add",
+              "qualifiedName": "sqlalchemy.ext.asyncio.AsyncSession.add",
+              "resolution": "external",
+              "touchesPersistence": "write",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/services/run_preparation.py",
+                "startLine": 363,
+                "endLine": 363
+              },
+              "children": [],
+              "argumentsExcerpt": "session.add(run_orm)"
+            },
+            {
+              "id": "call_cr_commit",
+              "order": 31,
+              "depth": 2,
+              "calleeName": "commit",
+              "qualifiedName": "sqlalchemy.ext.asyncio.AsyncSession.commit",
+              "resolution": "external",
+              "touchesPersistence": "write",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/services/run_preparation.py",
+                "startLine": 364,
+                "endLine": 364
+              },
+              "children": [],
+              "argumentsExcerpt": "await session.commit()"
+            }
+          ],
+          "symbolId": "sym_prepare_run",
+          "argumentsExcerpt": "_prepare_run(session, thread_id, request, user, initial_status=\"pending\")"
+        }
+      ],
+      "dataAccesses": [
+        {
+          "id": "da_cr_thread",
+          "callId": "call_cr_scalar",
+          "operation": "load",
+          "persistenceApi": "orm",
+          "object": {
+            "name": "Thread",
+            "symbolId": "sym_thread",
+            "store": "thread"
+          },
+          "paramFlows": [
+            {
+              "entryParamId": "param_cr_thread_id",
+              "field": "Thread.thread_id",
+              "confidence": "exact"
+            }
+          ],
+          "ownershipEvidence": {
+            "inPredicate": "no",
+            "stampedOnWrite": "not_applicable",
+            "ownerFields": [],
+            "identityBindingIds": []
+          },
+          "writtenFields": [],
+          "snippet": {
+            "text": "    existing_thread = await session.scalar(select(ThreadORM).where(ThreadORM.thread_id == thread_id))",
+            "truncated": false,
+            "range": {
+              "file": "libs/aegra-api/src/aegra_api/api/runs.py",
+              "startLine": 125,
+              "endLine": 125
+            }
+          }
+        },
+        {
+          "id": "da_cr_assistant",
+          "callId": "call_cr_assistant_scalar",
+          "operation": "load",
+          "persistenceApi": "orm",
+          "object": {
+            "name": "Assistant",
+            "symbolId": "sym_assistant",
+            "store": "assistant"
+          },
+          "paramFlows": [
+            {
+              "entryParamId": "param_cr_assistant_id",
+              "field": "Assistant.assistant_id",
+              "confidence": "probable"
+            }
+          ],
+          "ownershipEvidence": {
+            "inPredicate": "yes",
+            "stampedOnWrite": "not_applicable",
+            "ownerFields": [
+              "Assistant.user_id"
+            ],
+            "identityBindingIds": [
+              "bind_cr_user"
+            ]
+          },
+          "writtenFields": [],
+          "snippet": {
+            "text": "    assistant_stmt = select(AssistantORM).where(\n        AssistantORM.assistant_id == resolved_assistant_id,\n        or_(AssistantORM.user_id == user.identity, AssistantORM.user_id == \"system\"),\n    )",
+            "truncated": false,
+            "range": {
+              "file": "libs/aegra-api/src/aegra_api/services/run_preparation.py",
+              "startLine": 291,
+              "endLine": 294
+            }
+          }
+        },
+        {
+          "id": "da_cr_run",
+          "callId": "call_cr_add",
+          "operation": "create",
+          "persistenceApi": "orm",
+          "object": {
+            "name": "Run",
+            "symbolId": "sym_run",
+            "store": "runs"
+          },
+          "paramFlows": [
+            {
+              "entryParamId": "param_cr_thread_id",
+              "field": "Run.thread_id",
+              "confidence": "exact"
+            },
+            {
+              "entryParamId": "param_cr_assistant_id",
+              "field": "Run.assistant_id",
+              "confidence": "probable"
+            },
+            {
+              "entryParamId": "param_cr_input",
+              "field": "Run.input",
+              "confidence": "exact"
+            }
+          ],
+          "ownershipEvidence": {
+            "inPredicate": "not_applicable",
+            "stampedOnWrite": "yes",
+            "ownerFields": [
+              "Run.user_id"
+            ],
+            "identityBindingIds": [
+              "bind_cr_user"
+            ]
+          },
+          "writtenFields": [
+            {
+              "field": "thread_id",
+              "source": "request_param",
+              "entryParamId": "param_cr_thread_id"
+            },
+            {
+              "field": "assistant_id",
+              "source": "request_param",
+              "entryParamId": "param_cr_assistant_id"
+            },
+            {
+              "field": "user_id",
+              "source": "identity",
+              "identityBindingId": "bind_cr_user"
+            },
+            {
+              "field": "input",
+              "source": "request_param",
+              "entryParamId": "param_cr_input"
+            },
+            {
+              "field": "status",
+              "source": "constant"
+            },
+            {
+              "field": "config",
+              "source": "unknown"
+            },
+            {
+              "field": "context",
+              "source": "unknown"
+            }
+          ],
+          "snippet": {
+            "text": "run_orm = RunORM(\n    thread_id=thread_id,\n    assistant_id=resolved_assistant_id,\n    user_id=user.identity,\n    input=request.input,\n    status=initial_status,\n)\nsession.add(run_orm)",
+            "truncated": true,
+            "range": {
+              "file": "libs/aegra-api/src/aegra_api/services/run_preparation.py",
+              "startLine": 348,
+              "endLine": 363
+            }
+          }
+        }
+      ],
+      "relatedRoutes": [
+        {
+          "routeId": "route_get_thread",
+          "relations": [
+            "same_model",
+            "same_path_prefix",
+            "shared_auth_symbol"
+          ],
+          "sharedSymbolIds": [
+            "sym_thread",
+            "sym_require_auth",
+            "sym_get_current_user"
+          ]
+        }
+      ],
+      "budget": {
+        "limits": {
+          "maxCallDepth": 6,
+          "maxCallNodes": 31,
+          "maxSnippetChars": 480
+        },
+        "counts": {
+          "authSteps": 4,
+          "callNodes": 31,
+          "dataAccesses": 3,
+          "snippets": 9
+        },
+        "coverage": {
+          "authChain": "partial",
+          "callGraph": "partial",
+          "dataFlow": "partial"
+        },
+        "omitted": [
+          {
+            "id": "omit_cr_auth_handler",
+            "reason": "dynamic_dispatch",
+            "callId": "call_cr_auth_handler",
+            "detail": "LangGraphAuthBackend.authenticate calls a configured _authenticate_handler. The target is not an in-repo symbol."
+          },
+          {
+            "id": "omit_cr_authenticate_rest",
+            "reason": "node_budget",
+            "callId": "call_cr_authenticate",
+            "detail": "The noop and header-decoding branches of authenticate were not expanded past the handler call."
+          },
+          {
+            "id": "omit_cr_extract",
+            "reason": "node_budget",
+            "callId": "call_cr_extract",
+            "detail": "_extract_user_data was not inlined. It reads the auth object through hasattr and getattr."
+          },
+          {
+            "id": "omit_cr_get_extract",
+            "reason": "node_budget",
+            "callId": "call_cr_get_extract",
+            "detail": "The second _extract_user_data call, from get_current_user, was not inlined."
+          },
+          {
+            "id": "omit_cr_apply_rest",
+            "reason": "node_budget",
+            "callId": "call_cr_apply",
+            "detail": "build_auth_context and the request-field merges inside _apply_create_run_auth were not inlined."
+          },
+          {
+            "id": "omit_cr_threads_handler",
+            "reason": "dynamic_dispatch",
+            "callId": "call_cr_threads_handler",
+            "detail": "handle_event dispatches to an @auth.on handler registered at runtime for threads.create_run."
+          },
+          {
+            "id": "omit_cr_assistants_handler",
+            "reason": "dynamic_dispatch",
+            "callId": "call_cr_assistants_handler",
+            "detail": "handle_event dispatches to an @auth.on handler registered at runtime for assistants.read."
+          },
+          {
+            "id": "omit_cr_prepare_rest",
+            "reason": "node_budget",
+            "callId": "call_cr_prepare",
+            "detail": "Calls inside _prepare_run other than the assistant load and the Run insert were not inlined. Those include update_thread_metadata, set_thread_status, and executor.submit."
+          }
+        ]
+      }
+    },
+    {
+      "id": "route_get_thread",
+      "language": "python",
+      "framework": "fastapi",
+      "httpMethod": "GET",
+      "pathTemplate": "/threads/{thread_id}",
+      "registration": {
+        "mechanism": "decorator",
+        "range": {
+          "file": "libs/aegra-api/src/aegra_api/api/threads.py",
+          "startLine": 316,
+          "endLine": 316
+        },
+        "snippet": {
+          "text": "@router.get(\"/threads/{thread_id}\", response_model=Thread, responses={**NOT_FOUND})",
+          "truncated": false,
+          "range": {
+            "file": "libs/aegra-api/src/aegra_api/api/threads.py",
+            "startLine": 316,
+            "endLine": 316
+          }
+        }
+      },
+      "handler": {
+        "symbolId": "sym_get_thread",
+        "qualifiedName": "aegra_api.api.threads.get_thread",
+        "range": {
+          "file": "libs/aegra-api/src/aegra_api/api/threads.py",
+          "startLine": 317,
+          "endLine": 342
+        }
+      },
+      "entryParams": [
+        {
+          "id": "param_gt_thread_id",
+          "name": "thread_id",
+          "location": "path",
+          "pathInRequest": "path.thread_id",
+          "presence": "required",
+          "valueShape": "scalar",
+          "namesObject": "yes",
+          "reads": [
+            {
+              "range": {
+                "file": "libs/aegra-api/src/aegra_api/api/threads.py",
+                "startLine": 318,
+                "endLine": 318
+              },
+              "symbolId": "sym_get_thread",
+              "expression": "thread_id"
+            },
+            {
+              "range": {
+                "file": "libs/aegra-api/src/aegra_api/api/threads.py",
+                "startLine": 332,
+                "endLine": 332
+              },
+              "symbolId": "sym_get_thread",
+              "expression": "thread_id"
+            }
+          ]
+        },
+        {
+          "id": "param_gt_headers",
+          "name": "headers",
+          "location": "header",
+          "pathInRequest": "header",
+          "presence": "unknown",
+          "valueShape": "object",
+          "namesObject": "no",
+          "reads": [
+            {
+              "range": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_middleware.py",
+                "startLine": 254,
+                "endLine": 257
+              },
+              "symbolId": "sym_authenticate",
+              "expression": "conn.headers"
+            }
+          ]
+        }
+      ],
+      "identityBindings": [
+        {
+          "id": "bind_gt_user",
+          "name": "user",
+          "kind": "user",
+          "presence": "required",
+          "expression": "user: User = Depends(get_current_user)",
+          "producedByAuthStepId": "auth_gt_current_user",
+          "typeSymbolId": "sym_user",
+          "range": {
+            "file": "libs/aegra-api/src/aegra_api/api/threads.py",
+            "startLine": 319,
+            "endLine": 319
+          }
+        }
+      ],
+      "authChain": [
+        {
+          "id": "auth_gt_require",
+          "symbolId": "sym_require_auth",
+          "qualifiedName": "aegra_api.core.auth_deps.require_auth",
+          "range": {
+            "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+            "startLine": 62,
+            "endLine": 105
+          },
+          "kind": "authentication",
+          "mechanism": "dependency",
+          "scope": "router",
+          "applicability": "always",
+          "onFailure": "unknown",
+          "bindsObjectToCaller": "no",
+          "expanded": "yes",
+          "calls": [
+            {
+              "id": "call_gt_scope_get",
+              "order": 1,
+              "depth": 1,
+              "calleeName": "get",
+              "qualifiedName": "request.scope.get",
+              "resolution": "external",
+              "touchesPersistence": "none",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 77,
+                "endLine": 77
+              },
+              "children": [],
+              "argumentsExcerpt": "request.scope.get(_AUTH_RESULT_SCOPE_KEY)"
+            },
+            {
+              "id": "call_gt_backend",
+              "order": 2,
+              "depth": 1,
+              "calleeName": "get_auth_backend",
+              "qualifiedName": "aegra_api.core.auth_middleware.get_auth_backend",
+              "resolution": "resolved",
+              "touchesPersistence": "none",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 81,
+                "endLine": 81
+              },
+              "children": [],
+              "symbolId": "sym_get_auth_backend",
+              "argumentsExcerpt": "get_auth_backend()"
+            },
+            {
+              "id": "call_gt_authenticate",
+              "order": 3,
+              "depth": 1,
+              "calleeName": "authenticate",
+              "qualifiedName": "aegra_api.core.auth_middleware.LangGraphAuthBackend.authenticate",
+              "resolution": "resolved",
+              "touchesPersistence": "none",
+              "expanded": "partial",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 84,
+                "endLine": 84
+              },
+              "children": [
+                {
+                  "id": "call_gt_auth_handler",
+                  "order": 4,
+                  "depth": 2,
+                  "calleeName": "handler",
+                  "qualifiedName": "auth._authenticate_handler",
+                  "resolution": "ambiguous",
+                  "touchesPersistence": "unknown",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_middleware.py",
+                    "startLine": 260,
+                    "endLine": 260
+                  },
+                  "children": [],
+                  "argumentsExcerpt": "await self.auth_instance._authenticate_handler(headers)",
+                  "candidates": []
+                }
+              ],
+              "symbolId": "sym_authenticate",
+              "argumentsExcerpt": "await backend.authenticate(request)",
+              "snippet": {
+                "text": "if self.auth_instance is None:\n    user_data = {\"identity\": \"anonymous\", \"is_authenticated\": False}\n    return credentials, user\nuser_data = await self.auth_instance._authenticate_handler(headers)",
+                "truncated": true,
+                "range": {
+                  "file": "libs/aegra-api/src/aegra_api/core/auth_middleware.py",
+                  "startLine": 233,
+                  "endLine": 260
+                }
+              }
+            },
+            {
+              "id": "call_gt_http_auth",
+              "order": 5,
+              "depth": 1,
+              "calleeName": "HTTPException",
+              "qualifiedName": "fastapi.HTTPException",
+              "resolution": "external",
+              "touchesPersistence": "none",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 86,
+                "endLine": 86
+              },
+              "children": [],
+              "argumentsExcerpt": "HTTPException(status_code=401, detail=str(e))"
+            },
+            {
+              "id": "call_gt_http_missing",
+              "order": 6,
+              "depth": 1,
+              "calleeName": "HTTPException",
+              "qualifiedName": "fastapi.HTTPException",
+              "resolution": "external",
+              "touchesPersistence": "none",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 91,
+                "endLine": 91
+              },
+              "children": [],
+              "argumentsExcerpt": "HTTPException(status_code=401, detail=\"Authentication required\")"
+            },
+            {
+              "id": "call_gt_hasattr",
+              "order": 7,
+              "depth": 1,
+              "calleeName": "hasattr",
+              "qualifiedName": "hasattr",
+              "resolution": "external",
+              "touchesPersistence": "none",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 100,
+                "endLine": 100
+              },
+              "children": [],
+              "argumentsExcerpt": "hasattr(request, \"user\")"
+            },
+            {
+              "id": "call_gt_to_user",
+              "order": 8,
+              "depth": 1,
+              "calleeName": "_to_user_model",
+              "qualifiedName": "aegra_api.core.auth_deps._to_user_model",
+              "resolution": "resolved",
+              "touchesPersistence": "none",
+              "expanded": "yes",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 103,
+                "endLine": 103
+              },
+              "children": [
+                {
+                  "id": "call_gt_extract",
+                  "order": 9,
+                  "depth": 2,
+                  "calleeName": "_extract_user_data",
+                  "qualifiedName": "aegra_api.core.auth_deps._extract_user_data",
+                  "resolution": "resolved",
+                  "touchesPersistence": "none",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                    "startLine": 48,
+                    "endLine": 48
+                  },
+                  "children": [],
+                  "symbolId": "sym_extract_user_data",
+                  "argumentsExcerpt": "_extract_user_data(user)"
+                },
+                {
+                  "id": "call_gt_http_identity",
+                  "order": 10,
+                  "depth": 2,
+                  "calleeName": "HTTPException",
+                  "qualifiedName": "fastapi.HTTPException",
+                  "resolution": "external",
+                  "touchesPersistence": "none",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                    "startLine": 52,
+                    "endLine": 52
+                  },
+                  "children": [],
+                  "argumentsExcerpt": "HTTPException(status_code=401, detail=\"User identity not provided\")"
+                },
+                {
+                  "id": "call_gt_display_get",
+                  "order": 11,
+                  "depth": 2,
+                  "calleeName": "get",
+                  "qualifiedName": "dict.get",
+                  "resolution": "external",
+                  "touchesPersistence": "none",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                    "startLine": 55,
+                    "endLine": 55
+                  },
+                  "children": [],
+                  "argumentsExcerpt": "user_data.get(\"display_name\")"
+                },
+                {
+                  "id": "call_gt_user_init",
+                  "order": 12,
+                  "depth": 2,
+                  "calleeName": "User",
+                  "qualifiedName": "aegra_api.models.auth.User",
+                  "resolution": "resolved",
+                  "touchesPersistence": "none",
+                  "expanded": "yes",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                    "startLine": 59,
+                    "endLine": 59
+                  },
+                  "children": [],
+                  "symbolId": "sym_user",
+                  "argumentsExcerpt": "User(**user_data)"
+                }
+              ],
+              "symbolId": "sym_to_user_model",
+              "argumentsExcerpt": "_to_user_model(user)"
+            }
+          ],
+          "snippet": {
+            "text": "if result is None:\n    raise HTTPException(status_code=401, detail=\"Authentication required\")",
+            "truncated": true,
+            "range": {
+              "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+              "startLine": 88,
+              "endLine": 91
+            }
+          }
+        },
+        {
+          "id": "auth_gt_current_user",
+          "symbolId": "sym_get_current_user",
+          "qualifiedName": "aegra_api.core.auth_deps.get_current_user",
+          "range": {
+            "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+            "startLine": 115,
+            "endLine": 145
+          },
+          "kind": "authentication",
+          "mechanism": "dependency",
+          "scope": "route",
+          "applicability": "always",
+          "onFailure": "abort",
+          "bindsObjectToCaller": "no",
+          "expanded": "yes",
+          "calls": [
+            {
+              "id": "call_gt_get_scope",
+              "order": 13,
+              "depth": 1,
+              "calleeName": "get",
+              "qualifiedName": "request.scope.get",
+              "resolution": "external",
+              "touchesPersistence": "none",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 137,
+                "endLine": 137
+              },
+              "children": [],
+              "argumentsExcerpt": "request.scope.get(\"user\")"
+            },
+            {
+              "id": "call_gt_get_hasattr",
+              "order": 14,
+              "depth": 1,
+              "calleeName": "hasattr",
+              "qualifiedName": "hasattr",
+              "resolution": "external",
+              "touchesPersistence": "none",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 140,
+                "endLine": 140
+              },
+              "children": [],
+              "argumentsExcerpt": "hasattr(request, \"user\")"
+            },
+            {
+              "id": "call_gt_get_http",
+              "order": 15,
+              "depth": 1,
+              "calleeName": "HTTPException",
+              "qualifiedName": "fastapi.HTTPException",
+              "resolution": "external",
+              "touchesPersistence": "none",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 141,
+                "endLine": 141
+              },
+              "children": [],
+              "argumentsExcerpt": "HTTPException(status_code=401, detail=\"Authentication required\")"
+            },
+            {
+              "id": "call_gt_get_to_user",
+              "order": 16,
+              "depth": 1,
+              "calleeName": "_to_user_model",
+              "qualifiedName": "aegra_api.core.auth_deps._to_user_model",
+              "resolution": "resolved",
+              "touchesPersistence": "none",
+              "expanded": "yes",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                "startLine": 145,
+                "endLine": 145
+              },
+              "children": [
+                {
+                  "id": "call_gt_get_extract",
+                  "order": 17,
+                  "depth": 2,
+                  "calleeName": "_extract_user_data",
+                  "qualifiedName": "aegra_api.core.auth_deps._extract_user_data",
+                  "resolution": "resolved",
+                  "touchesPersistence": "none",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                    "startLine": 48,
+                    "endLine": 48
+                  },
+                  "children": [],
+                  "symbolId": "sym_extract_user_data",
+                  "argumentsExcerpt": "_extract_user_data(user)"
+                },
+                {
+                  "id": "call_gt_get_http_identity",
+                  "order": 18,
+                  "depth": 2,
+                  "calleeName": "HTTPException",
+                  "qualifiedName": "fastapi.HTTPException",
+                  "resolution": "external",
+                  "touchesPersistence": "none",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                    "startLine": 52,
+                    "endLine": 52
+                  },
+                  "children": [],
+                  "argumentsExcerpt": "HTTPException(status_code=401, detail=\"User identity not provided\")"
+                },
+                {
+                  "id": "call_gt_get_display_get",
+                  "order": 19,
+                  "depth": 2,
+                  "calleeName": "get",
+                  "qualifiedName": "dict.get",
+                  "resolution": "external",
+                  "touchesPersistence": "none",
+                  "expanded": "no",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                    "startLine": 55,
+                    "endLine": 55
+                  },
+                  "children": [],
+                  "argumentsExcerpt": "user_data.get(\"display_name\")"
+                },
+                {
+                  "id": "call_gt_get_user_init",
+                  "order": 20,
+                  "depth": 2,
+                  "calleeName": "User",
+                  "qualifiedName": "aegra_api.models.auth.User",
+                  "resolution": "resolved",
+                  "touchesPersistence": "none",
+                  "expanded": "yes",
+                  "callSite": {
+                    "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+                    "startLine": 59,
+                    "endLine": 59
+                  },
+                  "children": [],
+                  "symbolId": "sym_user",
+                  "argumentsExcerpt": "User(**user_data)"
+                }
+              ],
+              "symbolId": "sym_to_user_model",
+              "argumentsExcerpt": "_to_user_model(user)"
+            }
+          ],
+          "snippet": {
+            "text": "user = request.scope.get(\"user\")\nif user is None:\n    raise HTTPException(status_code=401, detail=\"Authentication required\")\nreturn _to_user_model(user)",
+            "truncated": true,
+            "range": {
+              "file": "libs/aegra-api/src/aegra_api/core/auth_deps.py",
+              "startLine": 137,
+              "endLine": 145
+            }
+          }
+        },
+        {
+          "id": "auth_gt_handle",
+          "symbolId": "sym_handle_event",
+          "qualifiedName": "aegra_api.core.auth_handlers.handle_event",
+          "range": {
+            "file": "libs/aegra-api/src/aegra_api/core/auth_handlers.py",
+            "startLine": 62,
+            "endLine": 158
+          },
+          "kind": "authorization",
+          "mechanism": "inline",
+          "scope": "inline",
+          "applicability": "always",
+          "onFailure": "unknown",
+          "bindsObjectToCaller": "unknown",
+          "expanded": "partial",
+          "calls": [],
+          "callId": "call_gt_handle",
+          "snippet": {
+            "text": "    ctx = build_auth_context(user, \"threads\", \"read\")\n    value = {\"thread_id\": thread_id}\n    filters = await handle_event(ctx, value)",
+            "truncated": false,
+            "range": {
+              "file": "libs/aegra-api/src/aegra_api/api/threads.py",
+              "startLine": 328,
+              "endLine": 330
+            }
+          }
+        }
+      ],
+      "callGraph": [
+        {
+          "id": "call_gt_build_ctx",
+          "order": 21,
+          "depth": 1,
+          "calleeName": "build_auth_context",
+          "qualifiedName": "aegra_api.core.auth_handlers.build_auth_context",
+          "resolution": "resolved",
+          "touchesPersistence": "none",
+          "expanded": "no",
+          "callSite": {
+            "file": "libs/aegra-api/src/aegra_api/api/threads.py",
+            "startLine": 328,
+            "endLine": 328
+          },
+          "children": [],
+          "symbolId": "sym_build_auth_context",
+          "argumentsExcerpt": "build_auth_context(user, \"threads\", \"read\")"
+        },
+        {
+          "id": "call_gt_handle",
+          "order": 22,
+          "depth": 1,
+          "calleeName": "handle_event",
+          "qualifiedName": "aegra_api.core.auth_handlers.handle_event",
+          "resolution": "resolved",
+          "touchesPersistence": "unknown",
+          "expanded": "partial",
+          "callSite": {
+            "file": "libs/aegra-api/src/aegra_api/api/threads.py",
+            "startLine": 330,
+            "endLine": 330
+          },
+          "children": [
+            {
+              "id": "call_gt_handler",
+              "order": 23,
+              "depth": 2,
+              "calleeName": "handler",
+              "qualifiedName": "auth.on handler",
+              "resolution": "ambiguous",
+              "touchesPersistence": "unknown",
+              "expanded": "no",
+              "callSite": {
+                "file": "libs/aegra-api/src/aegra_api/core/auth_handlers.py",
+                "startLine": 126,
+                "endLine": 126
+              },
+              "children": [],
+              "argumentsExcerpt": "await handler(ctx=auth_ctx, value=value)",
+              "candidates": []
+            }
+          ],
+          "symbolId": "sym_handle_event",
+          "argumentsExcerpt": "await handle_event(ctx, value)"
+        },
+        {
+          "id": "call_gt_filter",
+          "order": 24,
+          "depth": 1,
+          "calleeName": "build_metadata_filter",
+          "qualifiedName": "aegra_api.core.auth_filters.build_metadata_filter",
+          "resolution": "resolved",
+          "touchesPersistence": "none",
+          "expanded": "no",
+          "callSite": {
+            "file": "libs/aegra-api/src/aegra_api/api/threads.py",
+            "startLine": 335,
+            "endLine": 335
+          },
+          "children": [],
+          "symbolId": "sym_build_metadata_filter",
+          "argumentsExcerpt": "build_metadata_filter(ThreadORM.metadata_json, filters)"
+        },
+        {
+          "id": "call_gt_scalar",
+          "order": 25,
+          "depth": 1,
+          "calleeName": "scalar",
+          "qualifiedName": "sqlalchemy.ext.asyncio.AsyncSession.scalar",
+          "resolution": "external",
+          "touchesPersistence": "read",
+          "expanded": "no",
+          "callSite": {
+            "file": "libs/aegra-api/src/aegra_api/api/threads.py",
+            "startLine": 338,
+            "endLine": 338
+          },
+          "children": [],
+          "argumentsExcerpt": "session.scalar(stmt)"
+        },
+        {
+          "id": "call_gt_serialize",
+          "order": 26,
+          "depth": 1,
+          "calleeName": "_serialize_thread",
+          "qualifiedName": "aegra_api.api.threads._serialize_thread",
+          "resolution": "resolved",
+          "touchesPersistence": "none",
+          "expanded": "no",
+          "callSite": {
+            "file": "libs/aegra-api/src/aegra_api/api/threads.py",
+            "startLine": 342,
+            "endLine": 342
+          },
+          "children": [],
+          "symbolId": "sym_serialize_thread",
+          "argumentsExcerpt": "_serialize_thread(thread)"
+        }
+      ],
+      "dataAccesses": [
+        {
+          "id": "da_gt_thread",
+          "callId": "call_gt_scalar",
+          "operation": "load",
+          "persistenceApi": "orm",
+          "object": {
+            "name": "Thread",
+            "symbolId": "sym_thread",
+            "store": "thread"
+          },
+          "paramFlows": [
+            {
+              "entryParamId": "param_gt_thread_id",
+              "field": "Thread.thread_id",
+              "confidence": "exact"
+            }
+          ],
+          "ownershipEvidence": {
+            "inPredicate": "yes",
+            "stampedOnWrite": "not_applicable",
+            "ownerFields": [
+              "Thread.user_id"
+            ],
+            "identityBindingIds": [
+              "bind_gt_user"
+            ]
+          },
+          "writtenFields": [],
+          "snippet": {
+            "text": "    stmt = select(ThreadORM).where(ThreadORM.thread_id == thread_id, ThreadORM.user_id == user.identity)",
+            "truncated": false,
+            "range": {
+              "file": "libs/aegra-api/src/aegra_api/api/threads.py",
+              "startLine": 332,
+              "endLine": 332
+            }
+          }
+        }
+      ],
+      "relatedRoutes": [
+        {
+          "routeId": "route_post_thread_runs",
+          "relations": [
+            "same_model",
+            "same_path_prefix",
+            "shared_auth_symbol"
+          ],
+          "sharedSymbolIds": [
+            "sym_thread",
+            "sym_require_auth",
+            "sym_get_current_user"
+          ]
+        }
+      ],
+      "budget": {
+        "limits": {
+          "maxCallDepth": 6,
+          "maxCallNodes": 26,
+          "maxSnippetChars": 480
+        },
+        "counts": {
+          "authSteps": 3,
+          "callNodes": 26,
+          "dataAccesses": 1,
+          "snippets": 6
+        },
+        "coverage": {
+          "authChain": "partial",
+          "callGraph": "partial",
+          "dataFlow": "partial"
+        },
+        "omitted": [
+          {
+            "id": "omit_gt_auth_handler",
+            "reason": "dynamic_dispatch",
+            "callId": "call_gt_auth_handler",
+            "detail": "The same configured _authenticate_handler runs for this route and was not inlined."
+          },
+          {
+            "id": "omit_gt_authenticate_rest",
+            "reason": "node_budget",
+            "callId": "call_gt_authenticate",
+            "detail": "The noop and header-decoding branches of authenticate were not expanded past the handler call."
+          },
+          {
+            "id": "omit_gt_extract",
+            "reason": "node_budget",
+            "callId": "call_gt_extract",
+            "detail": "_extract_user_data was not inlined."
+          },
+          {
+            "id": "omit_gt_get_extract",
+            "reason": "node_budget",
+            "callId": "call_gt_get_extract",
+            "detail": "The _extract_user_data call inside get_current_user was not inlined."
+          },
+          {
+            "id": "omit_gt_handler",
+            "reason": "dynamic_dispatch",
+            "callId": "call_gt_handler",
+            "detail": "handle_event dispatches to an @auth.on handler registered at runtime for threads.read."
+          },
+          {
+            "id": "omit_gt_handle_rest",
+            "reason": "node_budget",
+            "callId": "call_gt_handle",
+            "detail": "get_auth_instance and _get_handler inside handle_event were not inlined."
+          },
+          {
+            "id": "omit_gt_build",
+            "reason": "node_budget",
+            "callId": "call_gt_build_ctx",
+            "detail": "build_auth_context was not inlined. It only wraps the user, resource, and action."
+          },
+          {
+            "id": "omit_gt_filter",
+            "reason": "node_budget",
+            "callId": "call_gt_filter",
+            "detail": "build_metadata_filter was not inlined. It compiles a handler filter dict into a JSONB predicate."
+          },
+          {
+            "id": "omit_gt_serialize",
+            "reason": "node_budget",
+            "callId": "call_gt_serialize",
+            "detail": "_serialize_thread was not inlined. It maps the ORM row onto the response model."
+          }
+        ]
+      }
+    }
+  ]
+}
