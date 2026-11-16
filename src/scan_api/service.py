@@ -1,4 +1,4 @@
-"""Validate a scan request, then clone and export. Agents are not run."""
+"""Validate a scan request, export a graph, then review each route."""
 
 from __future__ import annotations
 
@@ -8,6 +8,9 @@ import threading
 import traceback
 from pathlib import Path
 
+from review.model import UnconfiguredModel
+from review.runner import review_graph
+
 from scanner.joern_runner import INSTALL, JoernNotFound, find_home
 from scanner.scan import export_repository
 
@@ -15,7 +18,9 @@ from scan_api.access import AccessError, Revision, clone_at, parse_github_url, r
 from scan_api.store import Store, new_scan_id
 
 _FIELDS = {"repositoryUrl", "revision", "model", "agentCount", "agreementThreshold"}
-_PARTIAL = "Agent review is not implemented. The code graph is available."
+_COMPLETE = "Every route has a full vote set."
+_INCOMPLETE = "Review did not finish a full vote set. The code graph is available."
+_REVIEW_FAILED = "Review failed before finishing. The code graph is available."
 
 
 class ConfigError(Exception):
@@ -31,12 +36,14 @@ class ScanService:
         clone=clone_at,
         export=export_repository,
         joern_home=find_home,
+        model_client=None,
     ) -> None:
         self.store = store
         self._resolve = resolve
         self._clone = clone
         self._export = export
         self._joern_home = joern_home
+        self._model_client = model_client if model_client is not None else UnconfiguredModel()
         self._queue: queue.Queue[str] = queue.Queue()
         self._thread: threading.Thread | None = None
 
@@ -90,20 +97,64 @@ class ScanService:
             document = self._export(Path(work))
             if not isinstance(document, dict) or document.get("schemaVersion") != "1.0.0":
                 raise RuntimeError("The scanner did not return a schema 1.0.0 document.")
+        except (JoernNotFound, OSError, RuntimeError) as exc:
             self.store.update(
                 scan_id,
-                status="partial",
-                progress=_PARTIAL,
-                error=None,
-                graph=document,
+                status="failed",
+                progress="Scan failed.",
+                error=str(exc),
+                graph=None,
+                votes=[],
+                findings=[],
             )
-            print(f"scan {scan_id} partial", flush=True)
-        except (JoernNotFound, OSError, RuntimeError) as exc:
-            self.store.update(scan_id, status="failed", progress="Scan failed.", error=str(exc), graph=None)
             print(f"scan {scan_id} failed: {exc}", flush=True)
+            return
         finally:
             if work.exists():
                 shutil.rmtree(work, ignore_errors=True)
+        self._review(scan_id, job, document)
+
+    def _review(self, scan_id: str, job: dict, document: dict) -> None:
+        self.store.update(
+            scan_id,
+            status="partial",
+            progress="Reviewing routes.",
+            error=None,
+            graph=document,
+            votes=[],
+            findings=[],
+        )
+        try:
+            result = review_graph(
+                document,
+                model=job["model"],
+                agent_count=job["agentCount"],
+                agreement_threshold=job["agreementThreshold"],
+                client=self._model_client,
+            )
+        except Exception as exc:
+            self.store.update(
+                scan_id,
+                status="partial",
+                progress=_REVIEW_FAILED,
+                error=None,
+                graph=document,
+                votes=[],
+                findings=[],
+            )
+            print(f"scan {scan_id} partial: {exc}", flush=True)
+            return
+        status = "completed" if result.complete else "partial"
+        self.store.update(
+            scan_id,
+            status=status,
+            progress=_COMPLETE if result.complete else _INCOMPLETE,
+            error=None,
+            graph=document,
+            votes=result.votes,
+            findings=result.findings,
+        )
+        print(f"scan {scan_id} {status}", flush=True)
 
     def _loop(self) -> None:
         while True:
@@ -112,13 +163,17 @@ class ScanService:
                 self.execute(scan_id)
             except Exception:
                 traceback.print_exc()
-                self.store.update(
-                    scan_id,
-                    status="failed",
-                    progress="Scan failed.",
-                    error="The scan worker failed before producing a graph.",
-                    graph=None,
-                )
+                job = self.store.get(scan_id)
+                if job is not None and isinstance(job.get("graph"), dict):
+                    self.store.update(scan_id, status="partial", progress=_REVIEW_FAILED, error=None)
+                else:
+                    self.store.update(
+                        scan_id,
+                        status="failed",
+                        progress="Scan failed.",
+                        error="The scan worker failed before producing a graph.",
+                        graph=None,
+                    )
             finally:
                 self._queue.task_done()
 
@@ -173,6 +228,8 @@ def public_scan(job: dict) -> dict:
         "agentCount": job["agentCount"],
         "agreementThreshold": job["agreementThreshold"],
         "graph": graph,
+        "votes": job.get("votes") if isinstance(job.get("votes"), list) else [],
+        "findings": job.get("findings") if isinstance(job.get("findings"), list) else [],
     }
 
 
@@ -198,6 +255,8 @@ def _job(revision: Revision, request: dict) -> dict:
         "agentCount": request["agentCount"],
         "agreementThreshold": request["agreementThreshold"],
         "graph": None,
+        "votes": [],
+        "findings": [],
     }
 
 

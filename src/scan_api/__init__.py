@@ -1,6 +1,6 @@
-"""HTTP API that clones a GitHub revision and runs the FastAPI scanner.
+"""HTTP API that clones a GitHub revision, exports a code graph, and reviews it.
 
-Agent review is not implemented. A produced graph is a partial result.
+Votes and findings are stored on the scan. The graph document stays schema 1.0.0.
 """
 
 __version__ = "1.0.0"
