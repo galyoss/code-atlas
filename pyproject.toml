@@ -1,0 +1,27 @@
+[project]
+name = "export-fastapi"
+version = "1.0.0"
+description = "Export FastAPI routes to a code-graph schema 1.0.0 document using Joern pysrc2cpg."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "jsonschema>=4.22",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+]
+
+[project.scripts]
+export-fastapi = "export_fastapi.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+export_fastapi = ["export_overlay.sc"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
