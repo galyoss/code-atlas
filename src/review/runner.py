@@ -82,7 +82,12 @@ def review_graph(
         neighbors = _neighbors(route, by_id)
         symbols = _symbols_for([route, *neighbors], symbol_index)
         user = json.dumps(
-            {"neighborRoutes": neighbors, "symbolIndex": symbols, "route": route},
+            {
+                "targetRouteId": route["id"],
+                "neighborRoutes": neighbors,
+                "symbolIndex": symbols,
+                "route": route,
+            },
             ensure_ascii=False,
         )
         votes: list[_Vote] = []

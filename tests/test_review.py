@@ -212,7 +212,10 @@ def test_synthetic_load_by_id_agrees_once(tmp_path):
         if json.loads(call["user"])["route"]["id"] == "route_post_thread_runs"
     ]
     assert post_calls
-    assert [item["id"] for item in post_calls[0]["neighborRoutes"]] == ["route_get_thread"]
+    for context in post_calls:
+        assert next(iter(context)) == "targetRouteId"
+        assert context["targetRouteId"] == context["route"]["id"] == "route_post_thread_runs"
+        assert [item["id"] for item in context["neighborRoutes"]] == ["route_get_thread"]
     names = {item["id"] for item in post_calls[0]["symbolIndex"]}
     assert {"sym_thread", "sym_get_current_user", "sym_get_thread"} <= names
 

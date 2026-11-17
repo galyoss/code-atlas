@@ -11,6 +11,8 @@ Review for insecure direct object reference (IDOR) in the JSON field route. Use 
 Trace a request-supplied identifier to the loaded or modified object. Check if an auth step or predicate actually restricts access to that object by authenticated caller identity. Use identityBindingIds to locate the binding and confirm it in the snippet. A mere login check, a client-supplied owner, or an owner stamp on a different object does not constrain the access. Vote absent when the included code protects the access or shows no request-driven object access. Vote inconclusive if coverage is incomplete or necessary source is missing.
 
 Return one JSON object with routeId, verdict (present, absent, or inconclusive), and a short reason. For present, include dataAccessId copied from this route's dataAccesses. Cite the access whose snippet shows the unprotected object and has a source range. Omit dataAccessId on other verdicts. Exclude exploits and payloads.
+
+Copy targetRouteId from the user JSON verbatim into routeId. Review only the route whose id equals targetRouteId.
 """
 
 HUNTER = f"""\
