@@ -60,6 +60,19 @@ excludes call-level data operations. Layout changes animate even when ambient mo
 is paused; reduced-motion preferences make them immediate.
 See [3D controls verification](docs/ATLAS_3D_CONTROLS_VERIFICATION.md) for the exact checks.
 
+Data flow uses colored regions for **Endpoints**, **Core logic**, **Data reads**,
+**Data writes**, **External / libraries** and **Unresolved targets**. Labels follow
+the scene as you orbit. External code is not automatically a network service;
+the service role requires explicit RPC evidence in the scan.
+
+Click a node to emphasize its recorded flow and dim the surrounding graph. An
+endpoint highlights paths to recorded data terminals; an individual call shows
+its ancestors and descendants. Shared symbols show their recorded contexts,
+and missing traces are stated explicitly. Arrows remain visible while paused.
+Focus temporarily reveals required nodes through the current filters. Clear
+the selection or click empty space to restore the original filtered view.
+See [semantic focus verification](docs/ATLAS_SEMANTIC_FOCUS_VERIFICATION.md).
+
 ## Scan and investigate findings
 
 - **Run scan** sends the repository URL, optional revision, model, agent count and

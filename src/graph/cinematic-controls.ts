@@ -1,5 +1,5 @@
 import { visualSeed, type CosmicGraph, type Vec3 } from './cinematic';
-import { flowIndex } from './flow';
+import type { RecordedFocus } from './cinematic-semantics';
 import type { AtlasGraph } from './types';
 
 export type CosmicLayout = 'files' | 'entries' | 'data';
@@ -16,11 +16,11 @@ export interface CosmicVisibility {
 export interface CosmicPresentation extends CosmicVisibility {
   layout: CosmicLayout;
   positions: Vec3[];
+  focus?: RecordedFocus | null;
 }
 
 /** Layout depends on identity and recorded semantics, never the current filter. */
-export function cosmicLayouts(graph: AtlasGraph, cosmic: CosmicGraph): Record<CosmicLayout, Vec3[]> {
-  const terminals = flowIndex(graph).terminals;
+export function cosmicLayouts(_graph: AtlasGraph, cosmic: CosmicGraph): Record<CosmicLayout, Vec3[]> {
   function volume(id: string, center: number, width: number, height: number, depth: number): Vec3 {
     const theta = visualSeed(`angle:${id}`) * Math.PI * 2;
     const z = visualSeed(`latitude:${id}`) * 2 - 1;
@@ -33,11 +33,25 @@ export function cosmicLayouts(graph: AtlasGraph, cosmic: CosmicGraph): Record<Co
     entries: cosmic.nodes.map(({ node }) => node.groupedRoutes?.length
       ? volume(node.id, -340, 105, 230, 160)
       : volume(node.id, 160, 275, 280, 245)),
-    data: cosmic.nodes.map(({ node }) => node.groupedRoutes?.length
-      ? volume(node.id, -390, 90, 225, 155)
-      : terminals.has(node.id)
-        ? volume(node.id, 390, 125, 255, 190)
-        : volume(node.id, 0, 205, 285, 235)),
+    data: cosmic.nodes.map(({ node, role }) => {
+      if (role === 'entry') return volume(node.id, -390, 90, 220, 150);
+      if (role === 'read') {
+        const p = volume(node.id, 390, 105, 115, 150);
+        return [p[0], p[1] + 150, p[2] - 25];
+      }
+      if (role === 'write') {
+        const p = volume(node.id, 390, 115, 115, 155);
+        return [p[0], p[1] - 150, p[2] + 25];
+      }
+      if (role === 'both' || role === 'service') {
+        const p = volume(node.id, 420, 105, 100, 100);
+        return [p[0], p[1], p[2] + (role === 'service' ? 230 : -190)];
+      }
+      const p = volume(node.id, 0, 195, role === 'external' ? 155 : 175, 145);
+      if (role === 'external') return [p[0], p[1] - 180, p[2] - 40];
+      if (role === 'unresolved') return [p[0], p[1] + 65, p[2] - 230];
+      return [p[0], p[1] + 125, p[2] + 75];
+    }),
   };
 }
 

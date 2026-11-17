@@ -8,6 +8,7 @@ import { cosmicGraph } from '../graph/cinematic';
 import {
   cosmicLayouts, filterCosmic, type CosmicFilter, type CosmicLayout,
 } from '../graph/cinematic-controls';
+import { focusDescription, focusVisibility, recordedFocus, roleStyles, semanticRoles, serviceEvidence } from '../graph/cinematic-semantics';
 import { dataEffect, effectLabel } from '../graph/semantics';
 import { createUniverse, type UniverseRenderer } from './cinematic-renderer';
 import './cinematic.css';
@@ -42,8 +43,11 @@ export default function CinematicGraph({ graph, name, tag, onExit }: {
   const [layout, setLayout] = useState<CosmicLayout>('files');
   const [filter, setFilter] = useState<CosmicFilter>(initialFilter);
   const [railOpen, setRailOpen] = useState(() => !window.matchMedia('(max-width: 760px)').matches);
-  const visibility = useMemo(() => filterCosmic(cosmic, filter), [cosmic, filter]);
-  const presentation = useMemo(() => ({ ...visibility, positions: positions[layout], layout }), [visibility, positions, layout]);
+  const baseVisibility = useMemo(() => filterCosmic(cosmic, filter), [cosmic, filter]);
+  const focus = useMemo(() => selected === null ? null : recordedFocus(graph, cosmic.nodes[selected].node.id), [graph, cosmic, selected]);
+  const visibility = useMemo(() => focusVisibility(cosmic, baseVisibility, focus), [cosmic, baseVisibility, focus]);
+  const presentation = useMemo(() => ({ ...visibility, positions: positions[layout], layout, focus }), [visibility, positions, layout, focus]);
+  const roleCounts = useMemo(() => new Map(semanticRoles.map(role => [role, [...visibility.nodes].filter(i => cosmic.nodes[i].role === role).length])), [cosmic, visibility]);
   const moving = !paused && !reduced;
   const movingRef = useRef(moving); movingRef.current = moving;
   useEffect(() => {
@@ -70,8 +74,11 @@ export default function CinematicGraph({ graph, name, tag, onExit }: {
   useEffect(() => {
     engine.current?.setPresentation(presentation, !reduced);
     setHover(null);
-    setSelected(current => current !== null && !visibility.nodes.has(current) ? null : current);
-  }, [presentation, reduced, visibility]);
+  }, [presentation, reduced, railOpen]);
+  useEffect(() => {
+    // Only a filter change clears selection; a click on temporarily revealed evidence is valid.
+    setSelected(current => current !== null && !baseVisibility.nodes.has(current) ? null : current);
+  }, [baseVisibility]);
   useEffect(() => { engine.current?.select(selected); }, [selected]);
   useEffect(() => { section.current?.querySelector<HTMLButtonElement>('.universe-back')?.focus(); }, []);
   const node = selected === null ? null : cosmic.nodes[selected].node;
@@ -89,6 +96,8 @@ export default function CinematicGraph({ graph, name, tag, onExit }: {
   return (
     <section ref={section} className="universe" aria-label="3D code universe"
       data-motion={moving ? 'playing' : 'paused'} data-reduced-motion={reduced}
+      data-focus-kind={focus?.kind || ''} data-focus-count={focus?.paths.size || 0}
+      data-focus-terminals={focus?.terminals.size || 0} data-revealed={visibility.nodes.size - baseVisibility.nodes.size}
       data-selected={node?.id || ''} data-layout={layout} data-rail-open={railOpen}
       data-resolution={filter.resolution} data-file-filter={filter.group} data-query={filter.query}
       onKeyDown={event => {
@@ -163,10 +172,11 @@ export default function CinematicGraph({ graph, name, tag, onExit }: {
         <p>of {cosmic.nodes.length.toLocaleString()} recorded nodes</p>
         <p>{visibility.edges.size.toLocaleString()} / {cosmic.edges.length.toLocaleString()} relationships</p>
       </div>
-      {layout !== 'files' && <div className="universe-role-key" aria-label="Layout roles">
-        <span><i />Entry points</span><b>→</b><span>Code & calls</span>
-        {layout === 'data' && <><b>→</b><span className="is-data"><i />Data operations</span></>}
-      </div>}
+      <div className="universe-semantic-key" aria-label="Code role legend">
+        {semanticRoles.filter(role => roleCounts.get(role)).map(role => <span key={role} title={roleStyles[role].description}
+          style={{ color: roleStyles[role].css }}><i />{roleStyles[role].label}<b>{roleCounts.get(role)?.toLocaleString()}</b></span>)}
+        {!roleCounts.get('service') && <small>No explicit service / RPC evidence in this view</small>}
+      </div>
       {!visibility.nodes.size && !error && <div className="universe-empty" role="status">
         <Search size={24} /><h2>No code matches these filters.</h2><p>Try another name or restore the full network.</p>
         <button onClick={resetFilters}>Clear filters <ArrowUpRight size={15} /></button>
@@ -182,7 +192,15 @@ export default function CinematicGraph({ graph, name, tag, onExit }: {
         <div className="universe-detail-top"><span>{node.groupedRoutes?.length ? 'ENTRY POINT' : node.canonical ? 'CODE SYMBOL' : node.kind === 'auth' ? 'AUTH CONTEXT' : 'CALL OCCURRENCE'}</span>
           <button aria-label="Clear 3D selection" onClick={() => setSelected(null)}><X size={16} /></button></div>
         <h2>{node.name}<ArrowUpRight size={17} /></h2>
-        {effect && <span className="universe-effect">{effectLabel(effect)} data</span>}
+        <div className="universe-node-role" style={{ color: roleStyles[cosmic.nodes[selected!].role].css }}><i />{roleStyles[cosmic.nodes[selected!].role].label}</div>
+        {['external', 'unresolved', 'service'].includes(cosmic.nodes[selected!].role) && <small>{roleStyles[cosmic.nodes[selected!].role].description}</small>}
+        {effect && <span className="universe-effect">{effectLabel(effect)} data{serviceEvidence(node) ? ' · RPC evidence' : ''}</span>}
+        {focus && <div className="universe-focus-summary" role="status">
+          <strong>{focusDescription(focus)}</strong>
+          <span>{focus.paths.size.toLocaleString()} path nodes · {focus.terminals.size} data terminals</span>
+          {visibility.nodes.size > baseVisibility.nodes.size && <span>{visibility.nodes.size - baseVisibility.nodes.size} nodes temporarily revealed · filters retained</span>}
+          <small>Arrows show recorded direction. Thin links show code definitions.</small>
+        </div>}
         <p>{node.range?.file}{node.range ? `:${node.range.startLine}` : ''}</p>
         <small>{node.call ? `${node.call.resolution} target · static call evidence` : node.symbol?.signature || node.subtitle}</small>
       </aside>}
@@ -198,7 +216,7 @@ export default function CinematicGraph({ graph, name, tag, onExit }: {
         <button aria-label="Reset 3D view" onClick={() => { engine.current?.reset(); setSelected(null); }}><RotateCcw size={16} /></button>
         <i className="universe-fullscreen-separator" /><button className="universe-fullscreen" aria-label="Toggle fullscreen" onClick={fullScreen}><Maximize2 size={16} /></button>
       </div>
-      <footer className="universe-footer"><span><i className="universe-dot entry" />Entry<i className="universe-dot code" />Code<i className="universe-dot data" />Data</span><span>Illustrative energy · static scan{partial ? ' · partial coverage' : ''}</span><span className="universe-coordinate">3D / PERSPECTIVE</span></footer>
+      <footer className="universe-footer"><span>{focus ? 'FOCUSED TRACE · ESC TO CLEAR' : 'SELECT A NODE TO TRACE ITS FLOW'}</span><span>Illustrative energy · static scan{partial ? ' · partial coverage' : ''}</span><span className="universe-coordinate">3D / PERSPECTIVE</span></footer>
     </section>
   );
 }

@@ -1,5 +1,6 @@
 import type { AtlasGraph, GraphEdge, GraphNode } from './types';
 import { dataEffect } from './semantics';
+import { semanticIndex, roleStyles, type SemanticRole } from './cinematic-semantics';
 
 export type Vec3 = [number, number, number];
 export interface CosmicNode {
@@ -7,6 +8,7 @@ export interface CosmicNode {
   position: Vec3;
   color: Vec3;
   size: number;
+  role: SemanticRole;
 }
 export interface CosmicCluster {
   id: string;
@@ -30,13 +32,10 @@ export function visualSeed(value: string) {
   return (h >>> 0) / 4294967296;
 }
 const TAU = Math.PI * 2;
-const cyan: Vec3 = [0.24, 0.82, 1];
-const mint: Vec3 = [0.43, 1, 0.79];
-const gold: Vec3 = [1, 0.57, 0.2];
-const blue: Vec3 = [0.37, 0.55, 1];
 
 /** A spatial presentation of the existing graph. No synthetic graph nodes/edges. */
 export function cosmicGraph(graph: AtlasGraph): CosmicGraph {
+  const roles = semanticIndex(graph).roles;
   const real = [...graph.nodes.values()].filter((node) => node.kind !== 'group');
   const counts = new Map<string, number>();
   for (const node of real) if (node.groupId) counts.set(node.groupId, (counts.get(node.groupId) || 0) + 1);
@@ -73,11 +72,12 @@ export function cosmicGraph(graph: AtlasGraph): CosmicGraph {
     const radius = (cluster?.radius || 70) * Math.cbrt(visualSeed(node.id + ':r')) * (node.canonical ? .57 : 1);
     const center = cluster?.position || [0, 0, 0];
     const effect = dataEffect(node);
-    const color = effect === 'write' || effect === 'both' ? gold : node.groupedRoutes?.length ? mint : effect === 'read' ? cyan : node.kind === 'auth' ? blue : cyan;
+    const role = roles.get(node.id)!;
+    const color = roleStyles[role].color;
     return {
       node,
       position: [center[0] + Math.cos(angle) * disk * radius, center[1] + z * radius, center[2] + Math.sin(angle) * disk * radius],
-      color,
+      color, role,
       size: node.groupedRoutes?.length ? 9 : node.canonical ? 5.3 : effect ? 4 : 1.9 + seed * 1.3,
     };
   });

@@ -128,3 +128,36 @@
 @media (max-height: 800px) and (min-width: 761px) {
  .universe-rail { top: 198px; bottom: 90px; }
 }
+
+/* Semantic color is shared with the rendered particles and spatial envelopes. */
+.universe-regions { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.universe-region { position: absolute; top: 0; left: 0; padding: 7px 11px 8px; width: max-content; max-width: 210px; border-left: 1px solid var(--role-color); background: linear-gradient(90deg, #030b18dd, #030b1830); text-shadow: 0 2px 10px #000; }
+.universe-region[hidden] { display: none; }
+.universe-region strong { display: block; color: var(--role-color); font: 11px var(--sans); font-weight: 500; letter-spacing: .2px; }
+.universe-region span { display: block; font: 8px var(--mono); color: #9aaeba; margin-top: 4px; }
+.universe-semantic-key { position: absolute; top: 91px; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 15px; width: min(660px, calc(100% - 620px)); pointer-events: none; font: 9px var(--mono); }
+.universe-semantic-key > span { display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.universe-semantic-key i, .universe-node-role i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; box-shadow: 0 0 9px currentColor; flex: 0 0 auto; }
+.universe-semantic-key b { font: inherit; color: #7b919e; }
+.universe-semantic-key small { width: 100%; text-align: center; color: #718794; font: 8px var(--mono); }
+.universe-node-role { display: flex; align-items: center; gap: 7px; font: 10px var(--mono); margin: 8px 0 13px; }
+.universe-focus-summary { margin-top: 14px; padding: 13px 0 0; border-top: 1px solid #688a9b35; }
+.universe-focus-summary strong { display: block; font-size: 12px; font-weight: 500; color: #d6eee8; line-height: 1.5; }
+.universe-focus-summary span { display: block; font: 9px/1.8 var(--mono); color: #8faab5; margin-top: 5px; }
+.universe-focus-summary small { margin-top: 7px; color: #8298a5; }
+.universe[data-focus-kind]:not([data-focus-kind=""]) .universe-guide { opacity: .4; }
+.universe-detail { max-height: calc(100% - 330px); overflow-y: auto; scrollbar-width: thin; }
+@media (max-width: 1100px) and (min-width: 761px) {
+ .universe-semantic-key { width: calc(100% - 520px); font-size: 8px; gap: 8px; }
+ .universe-semantic-key b { display: none; }
+}
+@media (max-width: 760px) {
+ .universe-semantic-key { top: 237px; width: calc(100% - 36px); font-size: 7px; gap: 7px 12px; }
+ .universe-semantic-key b { display: none; }.universe-semantic-key small { font-size: 6px; }
+ .universe-region { padding: 5px 7px; max-width: 155px; }.universe-region strong { font-size: 9px; }.universe-region span { font-size: 7px; }
+ .universe[data-rail-open="true"] .universe-semantic-key, .universe[data-rail-open="true"] .universe-regions { visibility: hidden; }
+ .universe-detail { bottom: 178px; max-height: 290px; }.universe-focus-summary { margin-top: 10px; padding-top: 10px; }
+ .universe-detail p { margin: 8px 0; }.universe-focus-summary strong { font-size: 11px; }
+}
+.universe-region-leaders { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.universe-region-leaders line { stroke-width: 1; stroke-dasharray: 2 3; }
