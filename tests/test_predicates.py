@@ -46,3 +46,16 @@ def test_path_converter_and_prefix():
     assert join_paths("/api", "/v1/", "/items/{item_id}") == "/api/v1/items/{item_id}"
     assert is_schema_path("/api/v1/items/{item_id}")
     assert not is_schema_path("/api/v1/items/{item_id}/")
+
+
+def test_reexport_cycle_leaves_name_unresolved(tmp_path):
+    from scanner.source_index import load_index
+
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    (pkg / "a.py").write_text("from pkg.b import thing\n")
+    (pkg / "b.py").write_text("from pkg.a import thing\n")
+    index = load_index(tmp_path)
+    module = next(name for name in index.modules if name.endswith("a"))
+    assert index.resolve_name(module, "thing") is None

@@ -186,7 +186,9 @@ def test_synthetic_load_by_id_agrees_once(tmp_path):
         "agreementThreshold",
         "presentCount",
         "voteIds",
+        "routeCoverage",
     }
+    assert finding["routeCoverage"] == document["routes"][0]["budget"]["coverage"]
     assert finding["check"] == "idor"
     assert finding["routeId"] == "route_post_thread_runs"
     assert finding["dataAccessId"] == "da_load_thread"
@@ -298,27 +300,28 @@ def test_present_below_threshold_keeps_votes_and_writes_no_finding(tmp_path):
     ]
 
 
-def test_present_on_a_partial_slice_is_stored_inconclusive(tmp_path):
+def test_present_on_a_partial_route_stands_when_the_cited_path_is_resolved(tmp_path):
     document = json.loads(AEGRA.read_text(encoding="utf-8"))
     for route in document["routes"]:
-        coverage = route["budget"]["coverage"]
-        assert coverage["authChain"] == "partial"
-        assert coverage["callGraph"] == "partial"
-        assert coverage["dataFlow"] == "partial"
+        assert set(route["budget"]["coverage"].values()) == {"partial"}
 
     def decide(model, system, user):
-        route_id = json.loads(user)["route"]["id"]
-        return _reply(route_id, "present", "The model claims a missing owner check.")
+        route = json.loads(user)["route"]
+        return _reply(
+            route["id"],
+            "present",
+            "The model claims a missing owner check.",
+            data_access_id=route["dataAccesses"][0]["id"],
+        )
 
     model = FakeModel(decide)
     _, job = _run(tmp_path, document, model)
     assert job["status"] == "completed"
-    assert job["findings"] == []
     assert len(model.calls) == 4
-    assert {vote["verdict"] for vote in job["votes"]} == {"inconclusive"}
-    assert {vote["reason"] for vote in job["votes"]} == {
-        "Slice coverage is not complete, so a present vote is inconclusive."
-    }
+    assert {vote["verdict"] for vote in job["votes"]} == {"present"}
+    assert {finding["routeId"] for finding in job["findings"]} == {route["id"] for route in document["routes"]}
+    for finding in job["findings"]:
+        assert set(finding["routeCoverage"].values()) == {"partial"}
 
 
 @pytest.mark.parametrize("omit_range", [False, True])
@@ -574,7 +577,7 @@ def test_cleartext_remote_provider_is_rejected_before_a_request(monkeypatch):
 def test_unknown_coverage_blocks_present():
     def decide(model, system, user):
         route_id = json.loads(user)["route"]["id"]
-        return _reply(route_id, "present", "claimed")
+        return _reply(route_id, "present", "claimed", data_access_id="da_load")
 
     result = review_graph(
         _document(_route(coverage="unknown")),
@@ -618,3 +621,78 @@ def test_a_second_check_is_another_pass():
     assert [finding["check"] for finding in result.findings] == ["alpha", "beta"]
     assert [finding["presentCount"] for finding in result.findings] == [1, 1]
     assert all("reason" not in finding for finding in result.findings)
+
+
+def _partial_route_with_path(path_resolution: str) -> dict:
+    route = _route(coverage="partial")
+    route["dataAccesses"][0]["callId"] = "call_load"
+    route["callGraph"] = [
+        {
+            "id": "call_service",
+            "calleeName": "load_item",
+            "resolution": path_resolution,
+            "children": [{"id": "call_load", "calleeName": "get", "resolution": "external", "children": []}],
+        },
+        {"id": "call_other", "calleeName": "handler", "resolution": "ambiguous", "children": []},
+    ]
+    return route
+
+
+@pytest.mark.parametrize("path_resolution, stands", [("resolved", True), ("ambiguous", False)])
+def test_partial_route_present_stands_only_on_a_resolved_cited_path(path_resolution, stands):
+    def decide(model, system, user):
+        route_id = json.loads(user)["route"]["id"]
+        return _reply(route_id, "present", "No owner check before the load.", data_access_id="da_load")
+
+    result = review_graph(
+        _document(_partial_route_with_path(path_resolution)),
+        model="reviewer",
+        agent_count=2,
+        agreement_threshold=2,
+        client=FakeModel(decide),
+    )
+    if stands:
+        assert len(result.findings) == 1
+        assert result.findings[0]["routeCoverage"]["callGraph"] == "partial"
+    else:
+        assert result.findings == []
+        assert {vote["reason"] for vote in result.votes} == {
+            "The recorded path to the cited access passes through an unresolved call, so a present vote is inconclusive."
+        }
+
+
+def test_neighbor_routes_are_summaries_without_code():
+    from review.runner import route_context
+
+    route = _route("route_a")
+    other = _route("route_b")
+    route["relatedRoutes"] = [{"routeId": "route_b"}]
+    other["handler"] = {"symbolId": "sym_b", "qualifiedName": "app.b", "range": {"file": "b.py"}}
+    neighbors, _ = route_context({"routes": [route, other], "symbolIndex": []}, route)
+    assert neighbors == [
+        {
+            "id": "route_b",
+            "handler": {"symbolId": "sym_b", "qualifiedName": "app.b"},
+            "dataAccesses": [
+                {"id": "da_load", "ownershipEvidence": {"inPredicate": "no", "stampedOnWrite": "not_applicable"}}
+            ],
+        }
+    ]
+
+
+def test_a_present_vote_without_a_citation_gets_one_correction():
+    answers = iter(
+        [
+            json.dumps({"routeId": "route_item", "verdict": "present", "reason": "No owner check."}),
+            _reply("route_item", "present", "No owner check.", data_access_id="da_load"),
+        ]
+    )
+    model = FakeModel(lambda model, system, user: next(answers))
+    result = review_graph(
+        _document(_route()), model="reviewer", agent_count=1, agreement_threshold=1, client=model
+    )
+    assert len(model.calls) == 2
+    assert "A present vote must name a dataAccessId." in model.calls[1]["user"]
+    assert result.votes[0]["verdict"] == "present"
+    assert result.votes[0]["dataAccessId"] == "da_load"
+    assert len(result.findings) == 1
