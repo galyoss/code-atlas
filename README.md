@@ -50,6 +50,16 @@ The renderer uses the selected scan, including API scans; it never replaces one
 with Aegra. WebGL is required for 3D, with a return to 2D when unavailable.
 See [cinematic verification](docs/ATLAS_CINEMATIC_VERIFICATION.md) for local checks and scope.
 
+The left **Explore** rail changes the 3D arrangement between **Files**, **Entry points**
+and **Data flow**, smoothly moving the same nodes and their connections while preserving
+the camera. Data flow separates handlers, implementation and recorded data terminals.
+**All calls / Symbols**, **File cluster** and **Find code** combine to narrow the scene;
+counts show the remaining population and **Clear filters** restores it. File clusters
+follow the entry source, while search also matches actual call-site files. Symbols
+excludes call-level data operations. Layout changes animate even when ambient motion
+is paused; reduced-motion preferences make them immediate.
+See [3D controls verification](docs/ATLAS_3D_CONTROLS_VERIFICATION.md) for the exact checks.
+
 ## Scan and investigate findings
 
 - **Run scan** sends the repository URL, optional revision, model, agent count and

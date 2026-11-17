@@ -1,0 +1,31 @@
+# 3D layouts and filtering
+
+EFF-330 follow-up, baseline `e690407beda7fbf03900735046911023be98a624`, current `codex/atlas-integrated` checkout. Deliver locally running and independently reviewed/browser-verified frontend.
+
+## Changed contract
+
+Owner likes the cinematic appearance and now wants the left controller inside 3D, with adjustable layout/resolution/filtering and impressive animated repositioning. Preserve the accepted lighting, real data and investigative 2D state. No scanner/backend/schema changes.
+
+- C1: Restrained collapsible left rail, initially open on desktop and reachable on mobile. Layout buttons **Files**, **Entry points**, **Data flow**. Files is the accepted original constellation. Entry points separates real HTTP handlers from implementation in three-dimensional volumes. Data flow separates entry handlers, intervening code/calls and recorded data terminals along the horizontal world axis (entry → code → data), with concise role labels. Orbit remains free; no camera teleport on switching. Use `flowIndex` and schema fields, never name heuristics, for terminal roles.
+- C2: Layout changes visibly morph the same node identities over about900ms with eased movement; edges and electric pulses follow the moving endpoints. Rapid changes retarget from the current pose without snapping. Keep WebGL canvas/renderer and camera, selected visible node, zoom and orbit state. Decorative haze/labels should follow/fade appropriately for the layout rather than remain as obsolete file centers.
+- C3: Rail detail **All calls / Symbols** (all5920 vs213 canonical Aegra nodes), file selector using real source groups, and literal search over recorded node/name/source/route fields. Filters intersect, hide nonmatching nodes and edges lacking visible endpoints, exclude them from picking, and show truthful visible/total node/relationship counts. No matches shows a clear resettable empty state. Clearing filters restores the exact original sets and anchors; no invented links across hidden nodes. Hidden selection is cleared rather than leaving a misleading reticle. The file selector means the source group shown by the layout; label its scope clearly.
+- C4: Layout transitions still animate when ambient energy/orbit is paused, because they directly follow a user command; reduced-motion preference makes transitions immediate. Pause continues to freeze ambient clock/camera. Existing hover/select, orbit/zoom/reset, WebGL recovery and 2D return remain functional. Source filters and detail apply across all layouts; layout alone never silently changes population.
+- C5: Keep the graph as the dominant visual, not a wall of controls. Rework oversized left title as needed to fit the rail; keep node details and bottom controls unobstructed. Desktop1440×900 and mobile390×844 have accessible layout/filter controls and no horizontal overflow. Closing/reopening rail preserves its settings and camera. Keyboard input in search/selector must not orbit the scene or exit unexpectedly.
+
+## Implementation plan
+
+One sole implementer owns cinematic projection/layout/filter code and meaningful tests, `CinematicGraph.tsx`, renderer and isolatedCSS; minimal `App.tsx` only if integration requires it. Parent owns this spec/ledger/Linear/preview. Reuse existing `cosmicGraph`, `flowIndex`, semantic data fields and literal term-matching conventions. Keep filters/layout separate from immutable graph identity; compute deterministic positions once per view, preserve stable anchors under filters. Update renderer buffers/uniforms instead of reconstructing WebGL on each control action. A pure transition helper may make continuity verifiable. No new renderer dependency is needed.
+
+Task order: inspect baseline; implement deterministic semantic targets and intersecting filters with discriminating tests; add animated renderer updates and hit-testing; build compact responsive rail; run typecheck/tests/build; freeze candidate for independent full review and separate actual-browser acceptance; batch observed corrections; local commit and background production preview. No push/merge/deployment.
+
+## Acceptance
+
+Done when the real Aegra 3D scene can be reorganized and filtered from a usable left rail, transitions remain smooth and spatially continuous, and all required checks pass.
+
+Commands: `npm run typecheck`, `npm test`, `npm run build`, `git diff --check`. Data/layout tests must prove exact sets (all5920nodes/7294edges, Symbols213nodes/244canonicalcallpairs), file/search intersection with positive and impossible queries, edges with both endpoints, stable anchors after filtering, nonplanar finite positions, entries separated from code and terminal roles in Data flow. Include a small alternate graph fixture so Aegra constants cannot manufacture a pass.
+
+Actual browser: fresh3D displays desktop rail; select all three layouts and observe distinct settled projections plus intermediate frames/unchanged canvas/camera when ambient motion paused; interrupt a transition and confirm no jump; inspect/select a moving node or at least verify hit-testing matches rendered final position; allcalls↔symbols, file+query intersection, impossiblequery+reset restore counts; selection retained when visible and cleared when hidden; close/open rail; 2D investigation unchanged; keyboard controls/search separation; mobile layout/filter accessibility and no overlay collisions; initial/dynamic reduced motion; no unexpected console errors. Capture final Files and Data flow screenshots. A screenshot alone cannot prove animation.
+
+Producer remains the immutable partial static Aegra scan (`c480d2ea15034d86d163101054d0714230ef9f5e79b94918b535431ad072737e`). No new scan needed. Baseline has no3D rail or alternate layouts/filters and fails C1–C3, while41 existing tests pass. Resource lifetime/performance assertions bounded to code review and the tested browser, no universalFPS claim.
+
+Plan/readiness review: ready; clear authorized outcome, verified interfaces and representative local fixture, no unresolved consequential product choice. Detail and file/query filtering are a proportional interpretation of the requested controls. Parent reviewed ownership/order/contract before dispatch.
