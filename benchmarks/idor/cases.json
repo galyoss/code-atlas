@@ -1,0 +1,95 @@
+{
+  "description": "Published IDOR advisories, each checked on a vulnerable and a fixed revision. A vulnerable route should produce a finding; the same route on the fixed revision should not.",
+  "targets": [
+    {
+      "id": "aegra-v0.9.6",
+      "repository": "https://github.com/aegra/aegra",
+      "revision": "v0.9.6",
+      "sha": "d7d80c850010a9c5a3d2be59254c19b9eb0e25dd"
+    },
+    {
+      "id": "aegra-v0.9.7",
+      "repository": "https://github.com/aegra/aegra",
+      "revision": "v0.9.7",
+      "sha": "bc2d538885d9315cf662282ffe81da991fc440d2"
+    },
+    {
+      "id": "langflow-v1.7.3",
+      "repository": "https://github.com/langflow-ai/langflow",
+      "revision": "v1.7.3",
+      "sha": "dbe777ecaa51042f84c6f31629d59a6596835fd2"
+    },
+    {
+      "id": "langflow-v1.9.1",
+      "repository": "https://github.com/langflow-ai/langflow",
+      "revision": "v1.9.1",
+      "sha": "dc26d19c1ed5b2779a3a759f78a747f47089c534"
+    }
+  ],
+  "advisories": [
+    {
+      "id": "GHSA-m98r-6667-4wq7",
+      "title": "Cross-user run injection in /threads/{thread_id}/runs",
+      "vulnerable": ["aegra-v0.9.6"],
+      "fixed": ["aegra-v0.9.7"],
+      "routes": [
+        "POST /threads/{thread_id}/runs",
+        "POST /threads/{thread_id}/runs/stream",
+        "POST /threads/{thread_id}/runs/wait"
+      ]
+    },
+    {
+      "id": "GHSA-9c59-2mvc-vfr8",
+      "title": "Missing ownership enforcement on 7 Monitor API endpoints",
+      "vulnerable": ["langflow-v1.7.3"],
+      "fixed": ["langflow-v1.9.1"],
+      "routes": [
+        "GET /monitor/builds",
+        "DELETE /monitor/builds",
+        "DELETE /monitor/messages",
+        "PUT /monitor/messages/{message_id}",
+        "PATCH /monitor/messages/session/{old_session_id}",
+        "DELETE /monitor/messages/session/{session_id}",
+        "GET /monitor/transactions"
+      ]
+    },
+    {
+      "id": "GHSA-rf6x-r45m-xv3w",
+      "title": "Missing ownership verification in API key deletion",
+      "vulnerable": ["langflow-v1.7.3"],
+      "fixed": ["langflow-v1.9.1"],
+      "routes": ["DELETE /api_key/{api_key_id}"]
+    },
+    {
+      "id": "GHSA-7grx-3xcx-2xv5",
+      "title": "Unauthenticated IDOR on image downloads",
+      "vulnerable": ["langflow-v1.7.3"],
+      "fixed": ["langflow-v1.9.1"],
+      "routes": ["GET /files/images/{flow_id}/{file_name}"]
+    },
+    {
+      "id": "GHSA-qrpv-q767-xqq2",
+      "title": "IDOR in /api/v1/responses executes another user's flow",
+      "vulnerable": ["langflow-v1.7.3"],
+      "fixed": ["langflow-v1.9.1"],
+      "routes": ["POST /responses"]
+    },
+    {
+      "id": "GHSA-gh98-4phw-6fmw",
+      "title": "Cross-user flow access via deprecated /build/{flow_id}/vertices",
+      "vulnerable": ["langflow-v1.7.3", "langflow-v1.9.1"],
+      "fixed": [],
+      "routes": [
+        "POST /build/{flow_id}/vertices",
+        "POST /build/{flow_id}/vertices/{vertex_id}"
+      ]
+    }
+  ],
+  "outOfScope": [
+    {
+      "id": "GHSA-q494-8v3j-cp9j",
+      "title": "aegra-api cross-user Store read via namespace prefix matching",
+      "reason": "The flaw is an unescaped LIKE in langgraph-checkpoint-postgres. Aegra 0.10.8 only raises the dependency floor, so route-level code analysis cannot distinguish 0.10.7 from 0.10.8. It needs dependency scanning."
+    }
+  ]
+}

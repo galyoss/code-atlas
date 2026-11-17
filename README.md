@@ -17,8 +17,11 @@ npm ci
 npm run dev -- --host 127.0.0.1
 ```
 
-Open <http://127.0.0.1:5173>. No account, backend, external API or CDN is needed;
-fonts, icons and the scan asset are served locally. The committed lockfile supports
+Open <http://127.0.0.1:5173>. The home screen submits a GitHub repository to the
+[Scan API](#scan-api), lists saved scans and opens the bundled Aegra graph as a
+labelled sample (`?sample=aegra`). Start `scan-api` on port 8080 to scan; Vite
+proxies `/api` to it (set `SCAN_API_URL` for another address). The sample needs no
+backend. Fonts, icons and the sample asset are served locally. The committed lockfile supports
 npm 10.9; dependency refreshes used npm 11.6.2 to avoid an npm 10 optional-peer bug.
 
 ```sh
@@ -30,6 +33,25 @@ npm run preview -- --host 127.0.0.1
 
 The production preview is at <http://127.0.0.1:4173>. `dist/` is generated and
 ignored. This repository does not configure a frontend deployment.
+
+## Scan and investigate findings
+
+- **Run scan** sends the repository URL, optional revision, model, agent count and
+  agreement threshold to `POST /scans`. Validation and repository-access errors
+  appear before a scan starts; a missing model provider is flagged on the form.
+- `?scan=<id>` opens a scan. Until its graph exists, a progress screen polls
+  `GET /scans/{id}/summary`. Failed and interrupted scans keep their settings and
+  offer **Run again**. The graph opens as soon as it exists, while review continues.
+- The left rail holds the report beside the graph: **Findings**, **Endpoints**,
+  **Files** and **View** (the graph controls). Findings lists agreed findings and
+  candidates (present votes below the threshold) separately, with every agent's
+  vote and the reasons for inconclusive votes. Selecting one opens its entry flow,
+  marks the recorded path from the handler to the cited data access and opens its
+  evidence on the right. Each step of the path selects its node on the graph.
+  Nodes that carry a finding have a marker, and selecting one links back to it.
+- **Endpoints** lists every route; selecting one traces it to data. **Files** is
+  the whole tracked project tree recorded at clone time. Files with indexed code
+  are highlighted and open their source-file group on the graph.
 
 ## Explore the network
 
@@ -166,16 +188,20 @@ python3 -m pytest
 
 The pinned check is aegra tag `v0.11.0` at `46055c0b9adffe51fb168974f79dfadaa6edd612`. It compares `inPredicate`, auth `kind`, and `bindsObjectToCaller` for `POST /threads/{thread_id}/runs` and `GET /threads/{thread_id}`.
 
+## IDOR benchmark
+
+`benchmarks/idor/cases.json` pins published IDOR advisories in Aegra and Langflow to a vulnerable and a fixed revision. `python benchmarks/idor/run.py` scans each target with Joern (checkouts and graphs are cached under `.work/idor-benchmark`, per scanner source fingerprint) and reports, for every advisory route, whether any of its data accesses could carry a `present` vote. `--review --model <model>` also runs the review on those routes with the configured provider and reports recall and precision: a finding on a vulnerable route is a true positive, a finding on the fixed revision a false positive. Reports are written to `.work/idor-benchmark/reports`. Aegra's GHSA-q494 is listed as out of scope: the flaw is in a dependency, and Aegra's own code does not change between the vulnerable and fixed releases.
+
 ## Scan API
 
 `scan-api` clones the requested GitHub revision and calls `scanner.scan.export_repository`. Once the schema 1.0.0 graph exists, the service deletes the checkout and runs the registered checks. LangGraph reviews up to four routes concurrently and aggregates the votes. The current registry contains the IDOR check.
 
 For each route and check, the runner makes `agentCount` independent calls to the scan's `model`, alternating hunter and skeptic. Each call receives the route, its linked neighbor routes, and the symbol-index entries they reference. Each vote records the check, route, role, verdict, and reason. A `present` IDOR vote must cite a `dataAccessId` from the route with a source snippet and range. A finding forms when votes on the same access reach `agreementThreshold`. It records the route, check, data access, graph excerpt under `evidence`, threshold, count, and agreeing vote IDs.
 
-Partial slice coverage or a missing source snippet downgrades a `present` vote to `inconclusive`. An invalid vote or failed model call also records an `inconclusive` vote and makes the scan `partial`. The graph and other votes and findings remain available in that case. The scan is `completed` when all routes have a full vote set for every check and all model calls returned valid votes. The API requires a `model` and an `agreementThreshold` at most `agentCount`.
+A `present` vote stands on a partially covered route only when the recorded call path from the handler to the cited access is resolved; unresolved calls elsewhere in the route are left to the reviewer and recorded on the finding as `routeCoverage`. An unresolved call on that path, an access that is not on a recorded path, or a missing source snippet downgrades the vote to `inconclusive`. Related routes reach the model as summaries (method, path, handler, data accesses and their ownership evidence) without their code. An invalid vote or failed model call also records an `inconclusive` vote and makes the scan `partial`. The graph and other votes and findings remain available in that case. The scan is `completed` when all routes have a full vote set for every check and all model calls returned valid votes. The API requires a `model` and an `agreementThreshold` at most `agentCount`.
 
 Set `OPENAI_API_KEY` in the service environment before launching `scan-api` to use OpenAI. For a compatible provider, set `CODEATLAS_LLM_BASE_URL` to its API base URL (for example, `https://provider.example/v1`) and `CODEATLAS_LLM_API_KEY` to that provider's credential. Remote providers require HTTPS. HTTP is allowed for loopback endpoints at `127.0.0.1`, `[::1]`, or `localhost`. The model selected in `POST /scans` must support Chat Completions JSON object mode. Calls have a 60-second timeout. Without provider credentials, scans return the graph and remain `partial`.
 
-`GET /scans/{id}` returns the votes and findings. `GET /scans/{id}/graph` returns the schema 1.0.0 document, including `unresolvedGaps`. Use `GET /health` to check that the service is running.
+`GET /scans/{id}` returns the votes and findings. `GET /scans/{id}/summary` returns the same record without the graph, plus `createdAt`, `hasGraph`, `inProgress` (this process still works on it) and `reviewing`. `GET /scans` lists summaries, newest first. `GET /scans/{id}/files` returns the checkout's tracked paths (`git ls-files`, up to 20,000), recorded before the checkout is deleted. `GET /review` reports whether a model provider is configured. `GET /scans/{id}/graph` returns the schema 1.0.0 document, including `unresolvedGaps`. Use `GET /health` to check that the service is running.
 
 The Railway image is `python:3.12-slim`, `git`, Temurin 21, and Joern 4.0.684 (`JOERN_HOME=/opt/joern-cli`). The Linux archive is about 1.8 GB because it ships every language frontend. The image keeps `pysrc2cpg`, `jssrc2cpg`, `rubysrc2cpg`, `joern`, and `lib`, and drops the other frontends. If the frontend for the selected adapter is missing at runtime, `POST /scans` returns `failed` and does not pretend a scan ran. `GITHUB_TOKEN` is optional and is sent only as a git HTTP header for private repositories.
