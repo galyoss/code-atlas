@@ -19,6 +19,7 @@ _REASON_LIMIT = 480
 _COVERAGE_AXES = ("authChain", "callGraph", "dataFlow")
 _VERDICTS = {"present", "absent", "inconclusive"}
 _COVERAGE_REASON = "Slice coverage is not complete, so a present vote is inconclusive."
+_INVALID_REASON = "The vote did not include a valid text reason."
 
 
 @dataclass(frozen=True)
@@ -224,9 +225,13 @@ def _parse(text: str, check, route: dict, neighbors: list[dict], symbols: list[d
     verdict = payload.get("verdict")
     if not isinstance(verdict, str) or verdict not in _VERDICTS:
         return _Parsed("inconclusive", "The vote used an unknown verdict.", True)
-    reason = payload.get("reason", "")
+    reason = payload.get("reason")
     if not isinstance(reason, str):
-        reason = ""
+        return _Parsed("inconclusive", _INVALID_REASON, True)
+    try:
+        reason.encode("utf-8")
+    except UnicodeEncodeError:
+        return _Parsed("inconclusive", _INVALID_REASON, True)
     parsed = _Parsed(verdict, _short(reason.strip()), False)
     if verdict == "present":
         return _validate_present(check, route, neighbors, symbols, payload, parsed)

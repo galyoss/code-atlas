@@ -38,6 +38,8 @@ class ChatCompletionsModel:
         url = httpx.URL(base_url)
         if url.scheme not in {"http", "https"} or not url.host or url.userinfo or url.query or url.fragment:
             raise httpx.InvalidURL("Expected an HTTP(S) base URL without credentials, a query or a fragment.")
+        if url.scheme == "http" and url.host not in {"127.0.0.1", "::1", "localhost"}:
+            raise httpx.InvalidURL("Remote model providers require HTTPS.")
         self._endpoint = url.copy_with(raw_path=url.raw_path.rstrip(b"/") + b"/chat/completions")
         self._api_key = api_key
         self._timeout = timeout

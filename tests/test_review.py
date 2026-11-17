@@ -376,6 +376,37 @@ def test_failed_calls_stay_partial_and_do_not_invent_a_finding(tmp_path):
     ]
 
 
+@pytest.mark.parametrize(
+    "reason_fields",
+    [{}, {"reason": ["not text"]}, {"reason": "escaped lone surrogate \ud800"}],
+    ids=["missing", "non-string", "lone-surrogate"],
+)
+def test_invalid_vote_reason_preserves_results_in_scan_api(tmp_path, reason_fields):
+    def decide(model, system, user):
+        route_id = json.loads(user)["route"]["id"]
+        if system == CHECK.skeptic_prompt:
+            return json.dumps({
+                "routeId": route_id,
+                "verdict": "present",
+                "dataAccessId": "da_load",
+                **reason_fields,
+            })
+        return _reply(route_id, "present", "Cited load by ID", data_access_id="da_load")
+
+    service, job = _run(
+        tmp_path, _document(_route()), FakeModel(decide), agentCount=3, agreementThreshold=2
+    )
+    response = TestClient(create_app(service)).get(f"/scans/{job['id']}")
+    assert response.status_code == 200
+    scan = response.json()
+    assert scan["status"] == "partial"
+    assert scan["graph"] == job["graph"]
+    assert [vote["verdict"] for vote in scan["votes"]] == ["present", "inconclusive", "present"]
+    assert scan["votes"][1]["reason"] == "The vote did not include a valid text reason."
+    assert len(scan["findings"]) == 1
+    assert scan["findings"][0]["voteIds"] == [scan["votes"][0]["id"], scan["votes"][2]["id"]]
+
+
 def test_agreement_is_kept_when_another_call_fails(tmp_path):
     seen = {"n": 0}
     first_calls = Barrier(2, timeout=5)
@@ -521,6 +552,20 @@ def test_default_service_uses_configured_chat_completions(tmp_path, monkeypatch)
         "The model provider returned HTTP 401.",
     ]
     assert "local-test-key" not in json.dumps(job)
+
+
+def test_cleartext_remote_provider_is_rejected_before_a_request(monkeypatch):
+    async def unexpected_request(*args, **kwargs):
+        pytest.fail("The remote HTTP endpoint reached the request path.")
+
+    monkeypatch.setattr(review_model.ChatCompletionsModel, "_request", unexpected_request)
+    monkeypatch.setenv("CODEATLAS_LLM_BASE_URL", "http://provider.example/v1")
+    monkeypatch.setenv("CODEATLAS_LLM_API_KEY", "custom-test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "official-test-key")
+
+    client = review_model.model_from_env()
+    with pytest.raises(review_model.ModelError, match="CODEATLAS_LLM_BASE_URL is invalid"):
+        client.complete(model="reviewer", system="Return JSON", user="{}")
 
 
 def test_unknown_coverage_blocks_present():
