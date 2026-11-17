@@ -34,7 +34,7 @@ GRAPH = {
 }
 
 
-def _service(tmp_path, *, joern=True, export=None, clone=None, resolve=None, model_client=None):
+def _service(tmp_path, *, joern=True, export=None, clone=None, resolve=None, model_client=None, manifest=None):
     def default_resolve(url, revision):
         return Revision("https://github.com/acme/app", "acme", "app", revision or "main", SHA)
 
@@ -51,6 +51,7 @@ def _service(tmp_path, *, joern=True, export=None, clone=None, resolve=None, mod
         export=export or default_export,
         joern_home=(lambda: Path("/opt/joern")) if joern else (lambda: None),
         model_client=model_client,
+        manifest=manifest or (lambda path: {"paths": ["app/main.py", "README.md"], "total": 2, "truncated": False}),
     )
 
 
@@ -298,3 +299,61 @@ def test_worker_thread_reaches_completed(tmp_path):
     assert job is not None
     assert job["status"] == "completed"
 
+
+
+def test_summaries_omit_the_graph_and_track_progress(tmp_path):
+    service = _service(tmp_path)
+    client = TestClient(create_app(service))
+    review = client.get("/review").json()
+    assert review == {"configured": False, "detail": "No model provider is configured."}
+
+    first = client.post("/scans", json=_body()).json()
+    second = client.post("/scans", json=_body(revision="feature/x")).json()
+    queued = client.get(f"/scans/{first['id']}/summary").json()
+    assert "graph" not in queued
+    assert queued["status"] == "queued" and queued["inProgress"] is True
+    assert queued["hasGraph"] is False and queued["reviewing"] is False
+    assert queued["createdAt"].endswith("Z")
+
+    service.execute(first["id"])
+    service._pending.discard(first["id"])
+    done = client.get(f"/scans/{first['id']}/summary").json()
+    assert done["status"] == "completed" and done["hasGraph"] is True
+    assert done["inProgress"] is False
+
+    listed = client.get("/scans").json()["scans"]
+    assert {scan["id"] for scan in listed} == {first["id"], second["id"]}
+    assert all("graph" not in scan for scan in listed)
+    assert client.get("/scans/scan_bad/summary").status_code == 404
+
+    reopened = ScanService(Store(tmp_path / "scans"), model_client=object())
+    summary = reopened.summary(first["id"])[1]
+    assert summary["hasGraph"] is True and summary["inProgress"] is False
+    assert reopened.review_status()[1]["configured"] is True
+    stalled = reopened.summary(second["id"])[1]
+    assert stalled["status"] == "queued" and stalled["inProgress"] is False
+
+
+def test_file_manifest_is_served_beside_the_graph(tmp_path):
+    service = _service(tmp_path)
+    client = TestClient(create_app(service))
+    created = client.post("/scans", json=_body()).json()
+    assert client.get(f"/scans/{created['id']}/files").status_code == 409
+    service.execute(created["id"])
+    files = client.get(f"/scans/{created['id']}/files").json()
+    assert files == {"paths": ["app/main.py", "README.md"], "total": 2, "truncated": False}
+    summary = client.get(f"/scans/{created['id']}/summary").json()
+    assert summary["hasFiles"] is True and "files" not in summary
+
+
+def test_list_files_reads_tracked_paths(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "pkg").mkdir(parents=True)
+    (repo / "pkg" / "app.py").write_text("x = 1\n")
+    (repo / "ignored.tmp").write_text("")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "pkg/app.py"], check=True)
+    from scan_api.access import list_files
+
+    assert list_files(repo) == {"paths": ["pkg/app.py"], "total": 1, "truncated": False}
+    assert list_files(tmp_path / "missing") is None

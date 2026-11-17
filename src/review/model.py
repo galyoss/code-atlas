@@ -25,10 +25,10 @@ class UnconfiguredModel:
     """Fail closed so a scan cannot invent a vote without a model."""
 
     def __init__(self, reason: str = "No model provider is configured.") -> None:
-        self._reason = reason
+        self.reason = reason
 
     def complete(self, *, model: str, system: str, user: str) -> str:
-        raise ModelError(self._reason)
+        raise ModelError(self.reason)
 
 
 class ChatCompletionsModel:

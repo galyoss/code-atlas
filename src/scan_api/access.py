@@ -169,6 +169,26 @@ def clone_at(url: str, sha: str, dest) -> None:
             raise RuntimeError(f"git failed while cloning {url} at {sha}: {detail[-1000:]}")
 
 
+_MANIFEST_LIMIT = 20_000
+
+
+def list_files(checkout) -> dict | None:
+    """Tracked paths of the checkout, so the report can show the whole project tree."""
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(checkout), "ls-files", "-z"],
+            capture_output=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0:
+        return None
+    paths = sorted(path for path in completed.stdout.decode("utf-8", "replace").split("\0") if path)
+    return {"paths": paths[:_MANIFEST_LIMIT], "total": len(paths), "truncated": len(paths) > _MANIFEST_LIMIT}
+
+
 def _git_env() -> dict[str, str]:
     env = dict(os.environ)
     env["GIT_TERMINAL_PROMPT"] = "0"

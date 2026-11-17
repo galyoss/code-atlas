@@ -44,6 +44,21 @@ class Store:
                     job["graph"] = json.loads(graph_path.read_text(encoding="utf-8"))
             return copy.deepcopy(job)
 
+    def summary(self, scan_id: str) -> dict | None:
+        """The record without its graph, so polling does not read the document."""
+        with self._lock:
+            job = self._jobs.get(scan_id)
+            return None if job is None else self._without_graph(job)
+
+    def summaries(self) -> list[dict]:
+        with self._lock:
+            return [self._without_graph(job) for job in self._jobs.values()]
+
+    def _without_graph(self, job: dict) -> dict:
+        meta = copy.deepcopy({key: value for key, value in job.items() if key != "graph"})
+        meta["hasGraph"] = isinstance(job.get("graph"), dict) or self._graph_path(job["id"]).is_file()
+        return meta
+
     def _write(self, scan_id: str) -> None:
         job = self._jobs[scan_id]
         meta = {key: value for key, value in job.items() if key != "graph"}

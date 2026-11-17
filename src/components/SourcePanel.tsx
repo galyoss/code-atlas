@@ -1,6 +1,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { X } from 'lucide-react';
-import { scan } from '../data';
+import { sample } from '../data';
+import { sourceIdentity, type ScanSource } from '../source';
 import { callNodeId } from '../graph/adapter';
 import {
   accessSummary,
@@ -21,7 +22,7 @@ import type {
 
 const location = (range: SourceRange) =>
   `${range.file}:${range.startLine}${range.endLine === range.startLine ? '' : `–${range.endLine}`}`;
-function Excerpt({
+export function Excerpt({
   snippet,
   label = 'Source excerpt',
 }: {
@@ -134,22 +135,34 @@ function AccessEvidence({
     </section>
   );
 }
-function ScopeEvidence({ graph }: { graph: AtlasGraph }) {
+function ScopeEvidence({
+  graph,
+  source,
+}: {
+  graph: AtlasGraph;
+  source: ScanSource;
+}) {
   const { document } = graph;
+  const identity = sourceIdentity(source);
+  const scan = source.kind === 'api' ? source.scan : null;
   return (
     <>
-      <p>{document.note}</p>
+      {document.note && <p>{document.note}</p>}
       <p>
-        {document.routes.length} FastAPI route slices and{' '}
-        {document.symbolIndex.length} indexed symbols are included. This static
-        scan includes example code; it does not establish which endpoints are
-        deployed. Coverage is route-oriented, not a complete repository call
-        graph. No security review agents ran and no findings are supplied.
+        {document.routes.length} {document.frameworks.join(', ')} route slices
+        and {document.symbolIndex.length} indexed symbols are included. A static
+        scan does not establish which endpoints are deployed. Coverage is
+        route-oriented, not a complete repository call graph.{' '}
+        {scan
+          ? scan.reviewing
+            ? 'Review agents are still voting on routes.'
+            : `Review agents voted on ${new Set(scan.votes.map((vote) => vote.routeId)).size} of ${document.routes.length} routes.`
+          : 'No security review agents ran and no findings are supplied.'}
       </p>
       <dl>
         <dt>Repository</dt>
         <dd>
-          {scan.name} · {scan.tag}
+          {scan ? scan.repositoryUrl : identity.name} · {identity.tag}
         </dd>
         <dt>Revision</dt>
         <dd>{document.repo.revision}</dd>
@@ -159,17 +172,34 @@ function ScopeEvidence({ graph }: { graph: AtlasGraph }) {
         <dd>{document.schemaVersion}</dd>
         <dt>Generated (UTC)</dt>
         <dd>{document.generatedAt}</dd>
-        <dt>Scanner revision</dt>
-        <dd>{scan.provenance.scannerRevision}</dd>
-        <dt>Joern / Java</dt>
-        <dd>
-          {scan.provenance.joernVersion} / {scan.provenance.javaVersion}
-        </dd>
-        <dt>Document SHA-256</dt>
-        <dd>{scan.provenance.sha256}</dd>
+        {scan ? (
+          <>
+            <dt>Scan</dt>
+            <dd>{scan.id}</dd>
+            <dt>Review model</dt>
+            <dd>{scan.model}</dd>
+            <dt>Agents / agreement</dt>
+            <dd>
+              {scan.agentCount} / {scan.agreementThreshold}
+            </dd>
+            <dt>Status</dt>
+            <dd>{scan.progress}</dd>
+          </>
+        ) : (
+          <>
+            <dt>Scanner revision</dt>
+            <dd>{sample.provenance.scannerRevision}</dd>
+            <dt>Joern / Java</dt>
+            <dd>
+              {sample.provenance.joernVersion} / {sample.provenance.javaVersion}
+            </dd>
+            <dt>Document SHA-256</dt>
+            <dd>{sample.provenance.sha256}</dd>
+          </>
+        )}
       </dl>
       <p>
-        <a href={scan.graphUrl} download="aegra-v0.11.0.graph.json">
+        <a href={identity.graphUrl} download={identity.download}>
           Download the unchanged scan document
         </a>
       </p>
@@ -213,6 +243,7 @@ function ScopeEvidence({ graph }: { graph: AtlasGraph }) {
 }
 interface Props {
   graph: AtlasGraph;
+  source: ScanSource;
   node: GraphNode;
   mode: 'source' | 'scope';
   onClose: () => void;
@@ -220,6 +251,7 @@ interface Props {
 }
 export function SourcePanel({
   graph,
+  source,
   node,
   mode,
   onClose,
@@ -276,10 +308,12 @@ export function SourcePanel({
         {mode === 'scope' ? 'Graph scope' : 'Source evidence'}
       </div>
       <h2 id="source-title">
-        {mode === 'scope' ? `${scan.name} · real scan` : node.name}
+        {mode === 'scope'
+          ? `${sourceIdentity(source).name} · ${source.kind === 'sample' ? 'sample scan' : 'scan'}`
+          : node.name}
       </h2>
       {mode === 'scope' ? (
-        <ScopeEvidence graph={graph} />
+        <ScopeEvidence graph={graph} source={source} />
       ) : (
         <>
           <p className="qualified-name">

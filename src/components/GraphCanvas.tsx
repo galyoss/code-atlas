@@ -39,6 +39,10 @@ interface Props {
   matches: string[];
   searching: boolean;
   labelViewport?: LabelViewport;
+  /** Handlers and cited access occurrences that carry a finding or candidate. */
+  findingMarks?: Map<string, 'finding' | 'candidate'>;
+  /** The focused finding's recorded path from its handler to the cited access. */
+  findingPath?: Set<string> | null;
 }
 
 export function GraphCanvas({
@@ -52,6 +56,8 @@ export function GraphCanvas({
   matches,
   searching,
   labelViewport,
+  findingMarks,
+  findingPath,
 }: Props) {
   const viewport = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: number; origin: Point; camera: Point } | null>(
@@ -101,6 +107,7 @@ export function GraphCanvas({
     );
   }, [graph]);
   const priority = [
+    ...(findingPath || []),
     ...[...focusPaths].filter(
       (id) =>
         graph.nodes.get(id)!.accesses.length && !graph.nodes.get(id)!.canonical,
@@ -277,6 +284,11 @@ export function GraphCanvas({
           {edges.map((edge) => {
             const a = poses.get(edge.from)!,
               b = poses.get(edge.to)!;
+            const onFindingPath =
+              !!findingPath &&
+              !edge.aggregated &&
+              findingPath.has(edge.from) &&
+              findingPath.has(edge.to);
             const linked = flow
               ? flow.edges.has(edge.id)
               : focusPaths.size
@@ -304,7 +316,8 @@ export function GraphCanvas({
                 data-flow-edge={!!flow?.edges.has(edge.id)}
                 data-evidence-count={edge.evidence.length}
                 data-aggregated={!!edge.aggregated}
-                className={`graph-edge ${edge.kind} ${linked ? 'is-highlighted' : ''} ${(flow || active) && !linked ? 'is-muted' : ''}`}
+                data-finding-path={onFindingPath}
+                className={`graph-edge ${edge.kind} ${linked ? 'is-highlighted' : ''} ${onFindingPath ? 'is-finding-path' : ''} ${(flow || active) && !linked ? 'is-muted' : ''}`}
                 d={path}
                 opacity={edge.aggregated ? 1 : Math.min(a.opacity, b.opacity)}
                 markerEnd={
@@ -350,6 +363,7 @@ export function GraphCanvas({
             : active
               ? !neighbors.has(id)
               : searching && !matchSet.has(id);
+          const finding = findingMarks?.get(id);
           const label = labels.get(id);
           const activeLabel = id === active;
           const labelWidth = activeLabel
@@ -366,13 +380,14 @@ export function GraphCanvas({
           return (
             <button
               key={id}
-              className={`graph-node ${selected ? 'is-selected' : ''} ${dimmed ? 'is-muted' : ''} ${matchSet.has(id) ? 'is-match' : ''} ${neighbors.has(id) && active !== id ? 'is-neighbor' : ''} ${state.view === 'entries' && !highlighted && !focusPaths.has(id) ? 'is-context' : ''}`}
+              className={`graph-node ${selected ? 'is-selected' : ''} ${dimmed ? 'is-muted' : ''} ${matchSet.has(id) ? 'is-match' : ''} ${neighbors.has(id) && active !== id ? 'is-neighbor' : ''} ${state.view === 'entries' && !highlighted && !focusPaths.has(id) ? 'is-context' : ''} ${findingPath?.has(id) ? 'is-finding-path' : ''}`}
               data-node-id={id}
               data-kind={node.kind}
               data-canonical={!!node.canonical}
               data-flow-path={!!flow?.paths.has(id)}
               data-flow-terminal={!!flow?.terminals.has(id)}
               data-entry={!!node.groupedRoutes?.length}
+              data-finding={finding || 'none'}
               data-effect={effect || 'none'}
               data-access-count={node.accesses.length}
               data-emphasized={highlighted}
@@ -389,7 +404,7 @@ export function GraphCanvas({
                 pointerEvents: present ? 'auto' : 'none',
               }}
               tabIndex={present ? 0 : -1}
-              aria-label={`Select ${node.name}${node.call ? `, call ${node.call.order}, ${node.range?.file}:${node.range?.startLine}` : `, ${node.range?.file}`}${semanticDescription(node) ? `, ${semanticDescription(node)}` : ''}`}
+              aria-label={`Select ${node.name}${node.call ? `, call ${node.call.order}, ${node.range?.file}:${node.range?.startLine}` : `, ${node.range?.file}`}${semanticDescription(node) ? `, ${semanticDescription(node)}` : ''}${finding ? `, has a ${finding}` : ''}`}
               aria-pressed={selected}
               title={`${node.symbol?.qualifiedName || node.call?.qualifiedName || node.name}\n${node.subtitle}\n${semanticDescription(node)}${node.children.length ? '\nDouble-click to open recorded detail' : ''}`}
               onMouseEnter={() => setHovered(id)}
@@ -422,6 +437,12 @@ export function GraphCanvas({
                 <span className="entry-mark" aria-hidden="true">
                   ↗
                 </span>
+              )}
+              {finding && (
+                <span
+                  className={`finding-mark ${finding}`}
+                  aria-hidden="true"
+                />
               )}
               {node.children.length > 0 && (
                 <span

@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -11,12 +12,29 @@ import {
   ArrowRight,
   Code2,
   Database,
+  Flag,
   Orbit,
   PanelLeft,
   Search,
   X,
 } from 'lucide-react';
-import { loadScan, scan } from './data';
+import {
+  ApiError,
+  createScan,
+  repositoryName,
+  scanFiles,
+  scanGraph,
+  scanSummary,
+  type FileManifest,
+  type ScanSummary,
+} from './api';
+import { loadSample, openDocument } from './data';
+import { sourceIdentity, type ScanSource } from './source';
+import {
+  indexFindings,
+  nodeFindingKind,
+  type FindingItem,
+} from './graph/findings';
 import { flowIndex } from './graph/flow';
 import { ViewAnchors } from './graph/view-layout';
 import { matchingSymbols } from './graph/catalog';
@@ -33,7 +51,12 @@ import {
 import type { AtlasGraph } from './graph/types';
 import { GraphCanvas } from './components/GraphCanvas';
 import { SourcePanel } from './components/SourcePanel';
-import { GraphControls } from './components/GraphControls';
+import { GraphControls, type RailTab } from './components/GraphControls';
+import { FindingPanel, FindingsList } from './components/FindingsPanel';
+import { EndpointsList, FileTree } from './components/Navigator';
+import { projectTree } from './graph/project';
+import { Home } from './components/Home';
+import { ScanProgress, statusLabel } from './components/ScanStatus';
 import {
   accessSummary,
   dataEffect,
@@ -41,12 +64,71 @@ import {
   effectLabel,
 } from './graph/semantics';
 
+/** The address names the report: ?scan=<id> or ?sample=aegra. Nothing is substituted. */
+function useSearch() {
+  const [search, setSearch] = useState(window.location.search);
+  useEffect(() => {
+    const sync = () => setSearch(window.location.search);
+    window.addEventListener('popstate', sync);
+    return () => window.removeEventListener('popstate', sync);
+  }, []);
+  const open = useCallback((next: string) => {
+    window.history.pushState(null, '', next || window.location.pathname);
+    setSearch(next);
+  }, []);
+  return [search, open] as const;
+}
+
 export default function App() {
+  const [search, open] = useSearch();
+  const params = new URLSearchParams(search);
+  const scanId = params.get('scan');
+  const home = () => open('');
+  if (scanId) return <ApiScan key={scanId} id={scanId} open={open} />;
+  if (params.get('sample') === 'aegra') return <SampleScan onHome={home} />;
+  return <Home open={open} />;
+}
+
+function Message({
+  title,
+  detail,
+  onHome,
+  onRetry,
+}: {
+  title: string;
+  detail?: string | null;
+  onHome?: () => void;
+  onRetry?: () => void;
+}) {
+  return (
+    <main className="scan-loading" role="status">
+      <Orbit size={32} />
+      <h1>{title}</h1>
+      {detail && <p>{detail}</p>}
+      {(onHome || onRetry) && (
+        <div className="progress-actions">
+          {onHome && (
+            <button className="secondary-button" onClick={onHome}>
+              <ArrowLeft size={14} /> All scans
+            </button>
+          )}
+          {onRetry && (
+            <button className="secondary-button" onClick={onRetry}>
+              Try again
+            </button>
+          )}
+        </div>
+      )}
+    </main>
+  );
+}
+
+function SampleScan({ onHome }: { onHome: () => void }) {
   const [graph, setGraph] = useState<AtlasGraph | null>(null),
     [error, setError] = useState<string | null>(null);
   useEffect(() => {
     const controller = new AbortController();
-    loadScan(controller.signal)
+    loadSample(controller.signal)
       .then(setGraph)
       .catch((error: Error) => {
         if (!controller.signal.aborted) setError(error.message);
@@ -55,38 +137,215 @@ export default function App() {
   }, []);
   if (!graph)
     return (
-      <main className="scan-loading" role="status">
-        <Orbit size={32} />
-        <h1>
-          {error
-            ? 'The scan could not be opened.'
-            : 'Opening the Aegra network…'}
-        </h1>
-        <p>{error || 'Loading recorded code and source evidence.'}</p>
-        {error && (
-          <button
-            className="secondary-button"
-            onClick={() => window.location.reload()}
-          >
-            Try again
-          </button>
-        )}
-      </main>
+      <Message
+        title={
+          error ? 'The scan could not be opened.' : 'Opening the Aegra network…'
+        }
+        detail={error || 'Loading recorded code and source evidence.'}
+        onHome={error ? onHome : undefined}
+        onRetry={error ? () => window.location.reload() : undefined}
+      />
     );
-  return <AtlasWorkspace graph={graph} />;
+  return (
+    <AtlasWorkspace graph={graph} source={{ kind: 'sample' }} onHome={onHome} />
+  );
 }
-function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
+
+function ApiScan({ id, open }: { id: string; open: (search: string) => void }) {
+  const [scan, setScan] = useState<ScanSummary | null>(null),
+    [graph, setGraph] = useState<AtlasGraph | null>(null),
+    [error, setError] = useState<ApiError | null>(null),
+    [graphError, setGraphError] = useState<string | null>(null),
+    [retryError, setRetryError] = useState<string | null>(null),
+    [attempt, setAttempt] = useState(0);
+  // Poll the graph-free summary while this process still works on the scan.
+  useEffect(() => {
+    const controller = new AbortController();
+    let timer: number | undefined;
+    async function poll() {
+      try {
+        const next = await scanSummary(id, controller.signal);
+        setScan(next);
+        setError(null);
+        if (next.inProgress)
+          timer = window.setTimeout(poll, next.hasGraph ? 4000 : 2000);
+      } catch (caught) {
+        if (controller.signal.aborted) return;
+        const failure =
+          caught instanceof ApiError
+            ? caught
+            : new ApiError('The scan could not be loaded.', 0);
+        setError(failure);
+        if (failure.status !== 404) timer = window.setTimeout(poll, 5000);
+      }
+    }
+    poll();
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [id, attempt]);
+  const hasGraph = !!scan?.hasGraph;
+  useEffect(() => {
+    if (!hasGraph) return;
+    const controller = new AbortController();
+    setGraphError(null);
+    scanGraph(id, controller.signal)
+      .then((document) => setGraph(openDocument(document)))
+      .catch((caught: Error) => {
+        if (!controller.signal.aborted) setGraphError(caught.message);
+      });
+    return () => controller.abort();
+  }, [id, hasGraph, attempt]);
+  const [manifest, setManifest] = useState<FileManifest | null>(null);
+  const hasFiles = !!scan?.hasFiles;
+  useEffect(() => {
+    if (!hasFiles) return;
+    const controller = new AbortController();
+    // The tree is context; without it the rail falls back to files the graph names.
+    scanFiles(id, controller.signal)
+      .then(setManifest)
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [id, hasFiles]);
+  const home = () => open('');
+  async function retry() {
+    if (!scan) return;
+    setRetryError(null);
+    try {
+      const created = await createScan({
+        repositoryUrl: scan.repositoryUrl,
+        ...(scan.revision ? { revision: scan.revision } : {}),
+        model: scan.model,
+        agentCount: scan.agentCount,
+        agreementThreshold: scan.agreementThreshold,
+      });
+      open(`?scan=${created.id}`);
+    } catch (caught) {
+      setRetryError((caught as Error).message);
+    }
+  }
+  if (!scan)
+    return error ? (
+      <Message
+        title={
+          error.status === 404
+            ? 'This scan does not exist on the scan service.'
+            : 'The scan could not be opened.'
+        }
+        detail={
+          error.status === 404
+            ? `No saved scan has the ID ${id}. It may belong to another scan service or data directory.`
+            : error.message
+        }
+        onHome={home}
+        onRetry={
+          error.status === 404 ? undefined : () => setAttempt(attempt + 1)
+        }
+      />
+    ) : (
+      <Message title="Opening the scan…" />
+    );
+  if (graphError)
+    return (
+      <Message
+        title={`${repositoryName(scan.repositoryUrl)} has no graph to show.`}
+        detail={`${graphError} Status: ${statusLabel(scan)}.`}
+        onHome={home}
+        onRetry={() => setAttempt(attempt + 1)}
+      />
+    );
+  if (!scan.hasGraph)
+    return (
+      <ScanProgress
+        scan={scan}
+        onHome={home}
+        onRetry={retry}
+        retryError={retryError}
+      />
+    );
+  if (!graph)
+    return (
+      <Message
+        title={`Opening the ${repositoryName(scan.repositoryUrl)} network…`}
+        detail="Loading recorded code and source evidence."
+      />
+    );
+  return (
+    <AtlasWorkspace
+      graph={graph}
+      source={{ kind: 'api', scan }}
+      manifest={manifest}
+      onHome={home}
+      connectionError={error?.message}
+    />
+  );
+}
+function AtlasWorkspace({
+  graph,
+  source,
+  manifest = null,
+  onHome,
+  connectionError,
+}: {
+  graph: AtlasGraph;
+  source: ScanSource;
+  manifest?: FileManifest | null;
+  onHome: () => void;
+  connectionError?: string;
+}) {
   const [state, dispatch] = useReducer(
     (state: NavigationState, action: NavigationAction) =>
       navigate(graph, state, action),
     undefined,
     () => initialNavigation(!window.matchMedia('(max-width: 760px)').matches),
   );
-  const [panel, setPanel] = useState<'source' | 'scope' | null>(null),
-    [query, setQuery] = useState('');
+  const [panel, setPanel] = useState<'source' | 'scope' | 'finding' | null>(
+      null,
+    ),
+    [query, setQuery] = useState(''),
+    [focusedId, setFocusedId] = useState<string | null>(null);
+  const scan = source.kind === 'api' ? source.scan : null;
+  const [railTab, setRailTab] = useState<RailTab>(() =>
+    scan?.findings.length ||
+    scan?.votes.some((vote) => vote.verdict === 'present')
+      ? 'findings'
+      : 'endpoints',
+  );
+  const identity = sourceIdentity(source);
+  const findings = useMemo(
+    () =>
+      scan
+        ? indexFindings(
+            graph,
+            scan.findings,
+            scan.votes,
+            scan.agreementThreshold,
+          )
+        : null,
+    [graph, scan],
+  );
+  const focused = findings?.items.find((item) => item.id === focusedId) || null;
+  // The path stays emphasized while its entry flow is active; Back restores it.
+  const findingPath = useMemo(
+    () =>
+      focused && state.flowEntry === focused.handlerId
+        ? new Set(focused.path)
+        : null,
+    [focused, state.flowEntry],
+  );
+  const findingMarks = useMemo(() => {
+    const marks = new Map<string, 'finding' | 'candidate'>();
+    for (const [id, items] of findings?.byNode || [])
+      marks.set(id, nodeFindingKind(items)!);
+    return marks;
+  }, [findings]);
+  const findingCount =
+    findings?.items.filter((item) => item.kind === 'finding').length || 0;
   const [labelViewport, setLabelViewport] = useState<LabelViewport>();
   const sourceButton = useRef<HTMLButtonElement>(null),
     scopeButton = useRef<HTMLButtonElement>(null),
+    findingsButton = useRef<HTMLButtonElement>(null),
     railButton = useRef<HTMLButtonElement>(null),
     canvasArea = useRef<HTMLDivElement>(null);
   const layout = useMemo(() => layoutGraph(graph), [graph]);
@@ -175,6 +434,7 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
     return () => observer.disconnect();
   }, [
     panel,
+    railTab,
     state.selected,
     state.flowEntry,
     state.railOpen,
@@ -187,6 +447,65 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
     setPanel(null);
     dispatch({ type: 'back' });
   };
+  function centered(id: string) {
+    const p = positions.get(id),
+      element = canvasArea.current!;
+    return p
+      ? {
+          ...state.camera,
+          x: element.clientWidth / 2 - p.x * state.camera.scale,
+          y: element.clientHeight / 2 - p.y * state.camera.scale,
+        }
+      : undefined;
+  }
+  /** Open the finding's entry flow; the cited path is emphasized within it. */
+  function focusFinding(item: FindingItem | null) {
+    setFocusedId(item?.id || null);
+    if (item && state.flowEntry !== item.handlerId)
+      dispatch({
+        type: 'reveal',
+        id: item.handlerId,
+        camera: centered(item.handlerId),
+      });
+  }
+  function stepTo(item: FindingItem, id: string) {
+    if (state.flowEntry !== item.handlerId)
+      dispatch({ type: 'reveal', id: item.handlerId });
+    dispatch({ type: 'select', id });
+  }
+  function openFinding(item: FindingItem) {
+    setPanel('finding');
+    focusFinding(item);
+  }
+  function showRail(tab: RailTab) {
+    setRailTab(tab);
+    dispatch({ type: 'rail', open: true });
+  }
+  function openEndpoint(handlerId: string) {
+    if (state.view === 'code' && state.flowEntry === handlerId) return;
+    dispatch({ type: 'reveal', id: handlerId, camera: centered(handlerId) });
+  }
+  function openFile(groupId: string) {
+    if (state.view !== 'code') dispatch({ type: 'view', view: 'code' });
+    if (state.collapsed.has(groupId)) dispatch({ type: 'toggle', id: groupId });
+    dispatch({ type: 'select', id: groupId });
+    const region = layout.regions.get(groupId),
+      element = canvasArea.current!;
+    if (region)
+      dispatch({
+        type: 'camera',
+        camera: {
+          ...state.camera,
+          x: element.clientWidth / 2 - region.x * state.camera.scale,
+          y: element.clientHeight / 2 - region.y * state.camera.scale,
+        },
+      });
+  }
+  const tree = useMemo(
+    () => projectTree(graph, manifest?.paths || null, findings),
+    [graph, manifest, findings],
+  );
+  const selectedFindings = selected ? findings?.byNode.get(selected.id) : null;
   function findNext() {
     if (!matches.length) return;
     const index = matches.indexOf(state.selected || '');
@@ -206,7 +525,8 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
   return (
     <main
       className="atlas-app"
-      data-dataset="aegra-real"
+      data-dataset={source.kind === 'sample' ? 'aegra-real' : 'scan'}
+      data-finding-focus={findingPath ? focused!.id : ''}
       data-selected={state.selected || ''}
       data-scope="network"
       data-flow-entry={state.flowEntry || ''}
@@ -214,6 +534,7 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
       data-flow-terminals={JSON.stringify(flow ? [...flow.terminals] : [])}
       data-view={state.view}
       data-rail-open={state.railOpen}
+      data-rail-wide={state.railOpen && railTab !== 'view'}
       data-expanded={JSON.stringify([...state.expanded])}
       data-revealed={JSON.stringify([...state.revealed])}
       data-collapsed={JSON.stringify([...state.collapsed])}
@@ -229,23 +550,63 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
       <header className="app-header">
         <a
           className="brand"
-          href="#"
-          onClick={(event) => event.preventDefault()}
-          aria-label="CodeAtlas"
+          href={window.location.pathname}
+          onClick={(event) => {
+            event.preventDefault();
+            onHome();
+          }}
+          aria-label="CodeAtlas, all scans"
         >
           <Orbit size={23} strokeWidth={1.4} />
           <span>CodeAtlas</span>
         </a>
         <span className="header-divider" />
         <span className="repository-name">
-          {scan.name}
-          <small>{scan.tag}</small>
+          {identity.name}
+          <small>{identity.tag}</small>
         </span>
         <span className="revision" title={graph.document.repo.revision}>
           {graph.document.repo.revision.slice(0, 7)}
         </span>
         <div className="header-right">
-          <span className="live-dot" /> Code network
+          {scan ? (
+            <>
+              <span
+                className={`review-state ${scan.reviewing ? 'is-reviewing' : scan.status}`}
+                title={connectionError || scan.progress}
+              >
+                <span className="live-dot" />
+                {connectionError
+                  ? 'Connection lost · retrying'
+                  : scan.reviewing
+                    ? 'Reviewing routes…'
+                    : `Review ${statusLabel(scan).toLowerCase()}`}
+              </span>
+              <button
+                ref={findingsButton}
+                className={`findings-button ${findingCount ? 'has-findings' : ''}`}
+                aria-expanded={state.railOpen && railTab === 'findings'}
+                aria-controls="graph-controls"
+                onClick={() =>
+                  state.railOpen && railTab === 'findings'
+                    ? dispatch({ type: 'rail', open: false })
+                    : showRail('findings')
+                }
+              >
+                <Flag size={13} />
+                {findingCount} {findingCount === 1 ? 'finding' : 'findings'}
+                {findings!.items.length > findingCount && (
+                  <small>
+                    +{findings!.items.length - findingCount} candidates
+                  </small>
+                )}
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="live-dot" /> Sample scan · no review
+            </>
+          )}
         </div>
       </header>
       <div className="canvas-area" ref={canvasArea}>
@@ -260,6 +621,8 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
           matches={matches}
           searching={!!query.trim()}
           labelViewport={labelViewport}
+          findingMarks={findingMarks}
+          findingPath={findingPath}
         />
         {state.railOpen && (
           <GraphControls
@@ -267,7 +630,62 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
             state={state}
             dispatch={dispatch}
             returnFocus={railButton}
-          />
+            tab={railTab}
+            onTab={setRailTab}
+            tabs={[
+              ...(findings
+                ? [
+                    {
+                      id: 'findings' as const,
+                      label: 'Findings',
+                      count: findings.items.length,
+                      alert: findingCount > 0,
+                    },
+                  ]
+                : []),
+              {
+                id: 'endpoints',
+                label: 'Endpoints',
+                count: graph.document.routes.length,
+              },
+              {
+                id: 'files',
+                label: 'Files',
+                count: manifest?.total ?? tree.root.fileCount,
+              },
+              { id: 'view', label: 'View' },
+            ]}
+          >
+            {railTab === 'findings' && scan && findings ? (
+              <FindingsList
+                graph={graph}
+                index={findings}
+                scan={scan}
+                focusedId={panel === 'finding' ? focusedId : null}
+                onFocus={openFinding}
+              />
+            ) : railTab === 'files' ? (
+              <FileTree
+                tree={tree}
+                total={manifest?.total ?? tree.root.fileCount}
+                truncated={!!manifest?.truncated}
+                onOpenFile={openFile}
+                activeGroup={
+                  state.selected &&
+                  graph.nodes.get(state.selected)!.kind === 'group'
+                    ? state.selected
+                    : null
+                }
+              />
+            ) : (
+              <EndpointsList
+                graph={graph}
+                findings={findings}
+                activeEntry={state.flowEntry}
+                onOpen={(route) => openEndpoint(route.handler.symbolId)}
+              />
+            )}
+          </GraphControls>
         )}
         <div className="network-toolbar">
           <button
@@ -325,7 +743,7 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
           </div>
         </div>
         <div className="network-caption">
-          <span>AEGRA / CODE ATLAS</span>
+          <span>{identity.name.toUpperCase()} / CODE ATLAS</span>
           <p>
             {symbolsVisible}/{graph.baseIds.length} symbols shown <i>·</i>{' '}
             {graph.edges.filter((edge) => edge.aggregated).length} total call
@@ -370,9 +788,20 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
             </button>
           </aside>
         )}
-        {panel && (
+        {panel === 'finding' && focused && (
+          <FindingPanel
+            graph={graph}
+            item={focused}
+            selectedNode={state.selected}
+            onStep={(id) => stepTo(focused, id)}
+            onClose={() => setPanel(null)}
+            returnFocus={findingsButton}
+          />
+        )}
+        {(panel === 'source' || panel === 'scope') && (
           <SourcePanel
             graph={graph}
+            source={source}
             node={selected || graph.nodes.get(graph.defaultId)!}
             mode={panel}
             onClose={() => setPanel(null)}
@@ -437,6 +866,26 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
               )}
             </div>
             <div className="selection-actions">
+              {selectedFindings && (
+                <button
+                  className={`secondary-button related-findings ${nodeFindingKind(selectedFindings)}`}
+                  onClick={() =>
+                    selectedFindings.length === 1
+                      ? openFinding(selectedFindings[0])
+                      : showRail('findings')
+                  }
+                >
+                  <Flag size={13} />
+                  {selectedFindings.length}{' '}
+                  {nodeFindingKind(selectedFindings) === 'finding'
+                    ? selectedFindings.length === 1
+                      ? 'finding'
+                      : 'findings'
+                    : selectedFindings.length === 1
+                      ? 'candidate'
+                      : 'candidates'}
+                </button>
+              )}
               {selected.canonical && selected.accesses.length > 0 && (
                 <button
                   className="secondary-button reveal-accesses"
@@ -499,6 +948,11 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
           <span className="detail-legend">
             <i className="legend-line context" /> Auth / definition
           </span>
+          {findingMarks.size > 0 && (
+            <span>
+              <i className="legend-dot finding" /> Finding
+            </span>
+          )}
         </div>
         <button
           ref={scopeButton}
@@ -507,7 +961,9 @@ function AtlasWorkspace({ graph }: { graph: AtlasGraph }) {
           aria-expanded={panel === 'scope'}
         >
           <span className="partial-dot" /> Partial static scan{' '}
-          <span className="scope-extra">· 43 files · scope & coverage</span>
+          <span className="scope-extra">
+            · {graph.groups.length} files · scope & coverage
+          </span>
         </button>
       </footer>
     </main>
