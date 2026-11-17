@@ -1,4 +1,143 @@
-# scanner
+# CodeAtlas
+
+A continuous code network for exploring a real Joern scan of **Aegra v0.11.0**,
+revision `46055c0`. Atlas opens on all **213 indexed symbols in 43 source files**,
+including 59 route handlers, with **244 recorded directed call pairs**. Of these,
+141 cross source files. Every aggregated pair retains its route-specific evidence;
+1,222 recorded occurrences support the canonical links.
+
+The unchanged document and provenance are in [`docs/scans`](docs/scans/README.md).
+
+## Run locally
+
+Use Node.js 22.12 or newer.
+
+```sh
+npm ci
+npm run dev -- --host 127.0.0.1
+```
+
+Open <http://127.0.0.1:5173>. No account, backend, external API or CDN is needed;
+fonts, icons and the scan asset are served locally. The committed lockfile supports
+npm 10.9; dependency refreshes used npm 11.6.2 to avoid an npm 10 optional-peer bug.
+
+```sh
+npm run typecheck
+npm test
+npm run build
+npm run preview -- --host 127.0.0.1
+```
+
+The production preview is at <http://127.0.0.1:4173>. `dist/` is generated and
+ignored. This repository does not configure a frontend deployment.
+
+## Explore the network
+
+- The opening canvas contains every indexed symbol and all resolved call pairs.
+  Mint ↗ markers identify HTTP entry points; circular blue glyphs are other
+  code symbols (functions and classes). Subtle source regions provide context.
+  File controls collapse/reopen their symbols in place, preserving real links crossing the region boundary.
+- The collapsible left rail emphasizes **Code**, **Entry points**, or **Data flow**
+  on the same canvas. View changes morph between a source-file map, an entry-led
+  composition and entry → code/calls → data bands. **Files / Symbols** changes resolution;
+  **Call depth 0–3** changes only the selected handler or call branch. Mixed manual
+  states are labeled. Explicit depth replaces the active entry flow; Data flow’s
+  overview paths remain visible and are included in the depth indicator. File resolution
+  temporarily hides detail and preserves every saved layer.
+- **R / W / RW** badges distinguish reads, writes and both. The 32 owner functions
+  summarize 108 route-scoped named object accesses (72 reads, 36 writes), attributed
+  only to immediate resolved parents. These are evidence records, not runtime
+  counts or unique source sites. An ambiguous target can still have a known effect.
+- Select a data-owning function, such as `_prepare_run`, and **Reveal access paths**
+  to show its exact access calls and ancestors without opening unrelated siblings.
+  Read/object labels help identify the operations; original call names, routes,
+  resolution, exact source and all evidence remain in selection and **Source**.
+  Call-level persistence effects are identified separately from named object access.
+- Select an entry handler to immediately trace every recorded branch to named
+  data accesses and explicit persistence-effect frontiers. Unrelated code dims;
+  exact intermediate occurrences and definition links remain visible. Inspecting
+  any call or its **Source** keeps that flow active. **Clear entry flow** returns to
+  the surrounding graph. An entry without evidence says “No data path recorded”;
+  the partial scan does not establish that it has no persistence.
+- Data flow opens 108 named access calls and their minimal ancestor paths
+  (182 detail nodes) alongside all 213 symbols. Selecting an entry adds its other
+  explicit read/write frontiers. Named accesses stay terminals even with children;
+  propagated wrapper effects yield to deeper recorded terminals. Unknown effects
+  never manufacture a path. Manual branches and targeted owner paths are separate
+  from both automatic layers.
+- Select another glyph to inspect its actual neighbors when no flow is active. Full names appear on hover,
+  selection and in **Source**. Double-click a handler/call or use **Open detail** to
+  reveal its direct recorded children in the same network. Several branches can
+  remain open. Dashed auth context and definition links differ from call arrows;
+  unresolved invocations and data accesses have distinct glyphs.
+- For a concrete path, find `create_run` and press Enter: its 42 recorded detail
+  nodes lead to 34 data terminals (8 with named objects). `get_thread` reveals 8
+  detail nodes and 6 terminals. Switching entries replaces only automatic flow;
+  manually opened branches and camera stay in place. Dashed definition links
+  connect the exact occurrences to canonical symbols without inventing call edges.
+- Search matches literal terms across symbol names, qualified names, files and
+  route fields. Exact identifiers rank first. Typing highlights the same scene;
+  Enter / the arrow explicitly focuses the next result. Clear resets highlighting.
+- Drag or use arrow keys on the focused canvas to pan. Wheel zoom is centered on
+  the pointer; `+` / `-` and camera buttons zoom about the viewport center. **Bring
+  selection into view** and **Fit visible graph** explicitly move the camera.
+  Selection and expansion never fit or recenter automatically. A fresh phone-sized
+  view starts near a recorded handler at usable magnification; Fit shows the full graph.
+- **Back** restores the exact camera, selection, collapsed files and expanded
+  occurrences, targeted access paths, active entry flow, view and rail settings. **Source** is
+  closeable without graph movement. Escape closes the panel or rail, clears
+  search, or goes Back. Shift+Space on a focused glyph toggles its
+  recorded children. Reduced-motion preferences settle view changes and expansions immediately.
+- **Partial static scan** opens provenance, the original document download, route
+  coverage and known gaps. A symbol's source panel includes its incoming/outgoing
+  canonical relationships and all supporting route/call/auth-step references.
+
+## Data boundaries
+
+This route-oriented static scan includes example code. It is not a deployed-endpoint
+inventory or exhaustive repository graph. 55 routes have partial coverage and 4 are
+complete within their slices. Dynamic dispatch, depth/cycle/snippet budgets and
+unsupported GraphQL/WebSocket/framework behavior remain recorded gaps. No security
+review agents ran; no vulnerability findings are supplied.
+
+All 5,586 call occurrences are retained: 3,650 in handler trees and 1,936 in auth
+contexts. Identity includes route, optional auth step and original call ID. Canonical
+calls require the immediate parent and callee to have resolved symbol IDs; no edge
+jumps across an unresolved intermediate call or infers a target from its name.
+Record counts describe static evidence, not runtime execution frequency. Source
+ranges, invocation text, snippets, data access and ownership evidence stay intact.
+
+The original [`Aegra`](docs/code-graph-example-aegra.json) and
+[`Papertrail`](docs/code-graph-example.json) examples and schema remain test/reference
+fixtures. A missing/invalid real asset reports an explicit error without substituting
+an example. Raw SHA-256:
+`c480d2ea15034d86d163101054d0714230ef9f5e79b94918b535431ad072737e`.
+
+## Frontend architecture and verification
+
+`src/data.ts` loads the immutable scan asset. `graph/adapter.ts` constructs canonical
+nodes/aggregated evidence and complete occurrence trees. `catalog.ts` searches
+recorded fields. `layout.ts` computes a deterministic stopped D3 source-file layout once.
+`view-layout.ts` caches semantic role bands and append-only detail slots per view;
+ordinary selection/expansion never moves surviving anchors. View changes deliberately
+rearrange identities and returning to Code restores its saved anchors. `flow.ts`
+indexes exact occurrence ancestry and terminal frontiers, keeping auth/definition
+context distinct from calls. `navigation.ts` owns snapshots and independent manual,
+mode and active-flow visibility. `useAnimatedScene.ts` retargets node/edge motion from
+the current pose over 740 ms, including rapid interruptions and reduced motion.
+
+Tests independently traverse raw JSON to verify the exact symbol, call-pair and
+reference sets. They also cover source fidelity, same-name/ID distinctions,
+unresolved-parent data ownership, read-only and unknown-effect cases, exact targeted
+access paths, complete entry flow and route/auth identity, independent visibility
+layers, collapse/history, pointer zoom, semantic band order, source-map round trips
+and non-overlapping glyphs. Visual acceptance uses the
+actual production build; results and scope are recorded in
+[`ATLAS_NETWORK_VERIFICATION.md`](docs/ATLAS_NETWORK_VERIFICATION.md), the
+[controls/data verification](docs/ATLAS_CONTROLS_VERIFICATION.md), and the
+[entry-flow/layout verification](docs/ATLAS_ENTRY_FLOW_VERIFICATION.md).
+
+# Scanner
 
 `scanner` (`src/scanner`) is the code scanner. It writes one [code-graph schema 1.0.0](docs/code-graph-schema.json) document. FastAPI still runs Joern `pysrc2cpg` and reads SQLAlchemy `where` / `filter` text, with `Depends` and import aliases filled from the Python AST. Express uses `jssrc2cpg`. Rails uses `rubysrc2cpg`. `inPredicate` is taken from the call text. If that text does not contain the comparison, the value is `unknown`.
 
