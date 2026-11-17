@@ -1,10 +1,12 @@
 """IDOR review with a fake model. No live model and no repository checkout."""
 
 import json
+import socket
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from review.model import ChatCompletionsClient
 from review.registry import registered_checks
 from review.runner import review_graph
 from scan_api.access import Revision
@@ -347,7 +349,17 @@ def test_agreement_is_kept_when_another_call_fails(tmp_path):
     assert [vote["verdict"] for vote in job["votes"]] == ["present", "present", "inconclusive"]
 
 
-def test_unconfigured_model_keeps_the_graph_partial(tmp_path):
+def test_missing_model_key_stores_inconclusive_and_does_not_open_a_socket(tmp_path, monkeypatch):
+    monkeypatch.delenv("REVIEW_MODEL_API_KEY", raising=False)
+    opened = {"n": 0}
+
+    def refuse(*args, **kwargs):
+        opened["n"] += 1
+        raise AssertionError("socket opened")
+
+    monkeypatch.setattr(socket, "socket", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
+
     def resolve(url, revision):
         return Revision("https://github.com/acme/app", "acme", "app", "main", SHA)
 
@@ -369,11 +381,76 @@ def test_unconfigured_model_keeps_the_graph_partial(tmp_path):
     _, created = service.create(_body(model="reviewer"))
     service.execute(created["id"])
     _, job = service.get(created["id"])
+    assert opened["n"] == 0
     assert job["status"] == "partial"
+    assert job["error"] is None
     assert job["findings"] == []
+    assert job["graph"] == document
     assert job["graph"]["schemaVersion"] == "1.0.0"
-    assert {vote["verdict"] for vote in job["votes"]} == {"inconclusive"}
-    assert all("No model provider is configured" in vote["reason"] for vote in job["votes"])
+    assert [vote["verdict"] for vote in job["votes"]] == ["inconclusive", "inconclusive"]
+    assert {vote["reason"] for vote in job["votes"]} == {"The model key is not configured."}
+
+
+class _Body:
+    def __init__(self, payload: dict):
+        self._raw = json.dumps(payload).encode("utf-8")
+
+    def read(self) -> bytes:
+        return self._raw
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+def test_chat_client_sends_the_model_name_and_returns_the_message(monkeypatch):
+    monkeypatch.delenv("REVIEW_MODEL_BASE_URL", raising=False)
+    seen = {}
+
+    def urlopen(request, timeout):
+        seen["url"] = request.full_url
+        seen["timeout"] = timeout
+        seen["auth"] = request.get_header("Authorization")
+        seen["body"] = json.loads(request.data.decode("utf-8"))
+        return _Body(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"routeId":"route_item","verdict":"absent","reason":"tied"}',
+                        }
+                    }
+                ]
+            }
+        )
+
+    client = ChatCompletionsClient(api_key="test-key", urlopen=urlopen)
+    text = client.complete(model="reviewer", system="hunter prompt", user="route json")
+    assert text == '{"routeId":"route_item","verdict":"absent","reason":"tied"}'
+    assert seen["url"] == "https://api.openai.com/v1/chat/completions"
+    assert seen["timeout"] == 60
+    assert seen["auth"] == "Bearer test-key"
+    assert seen["body"] == {
+        "model": "reviewer",
+        "messages": [
+            {"role": "system", "content": "hunter prompt"},
+            {"role": "user", "content": "route json"},
+        ],
+    }
+
+    def custom(request, timeout):
+        seen["custom_url"] = request.full_url
+        return _Body({"choices": [{"message": {"content": "{\"routeId\":\"r\",\"verdict\":\"absent\",\"reason\":\"ok\"}"}}]})
+
+    other = ChatCompletionsClient(
+        base_url="https://models.example.test/v1/",
+        api_key="test-key",
+        urlopen=custom,
+    )
+    assert other.complete(model="other-model", system="s", user="u").startswith("{")
+    assert seen["custom_url"] == "https://models.example.test/v1/chat/completions"
 
 
 def test_unknown_coverage_blocks_present():
