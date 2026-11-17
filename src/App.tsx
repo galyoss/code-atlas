@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -63,6 +65,8 @@ import {
   effectGlyph,
   effectLabel,
 } from './graph/semantics';
+
+const CinematicGraph = lazy(() => import('./components/CinematicGraph'));
 
 /** The address names the report: ?scan=<id> or ?sample=aegra. Nothing is substituted. */
 function useSearch() {
@@ -294,6 +298,20 @@ function AtlasWorkspace({
   onHome: () => void;
   connectionError?: string;
 }) {
+  const [cinematic, setCinematic] = useState(() => new URLSearchParams(window.location.search).get('view') === 'cinematic');
+  function changeRenderer(next: boolean) {
+    const url = new URL(window.location.href);
+    if (next) url.searchParams.set('view', 'cinematic');
+    else url.searchParams.delete('view');
+    window.history.replaceState(null, '', url);
+    setCinematic(next);
+    if (!next) requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('.universe-launch')?.focus());
+  }
+  useEffect(() => {
+    const sync = () => setCinematic(new URLSearchParams(window.location.search).get('view') === 'cinematic');
+    window.addEventListener('popstate', sync);
+    return () => window.removeEventListener('popstate', sync);
+  }, []);
   const [state, dispatch] = useReducer(
     (state: NavigationState, action: NavigationAction) =>
       navigate(graph, state, action),
@@ -525,6 +543,7 @@ function AtlasWorkspace({
   return (
     <main
       className="atlas-app"
+      data-renderer={cinematic ? 'cinematic' : '2d'}
       data-dataset={source.kind === 'sample' ? 'aegra-real' : 'scan'}
       data-finding-focus={findingPath ? focused!.id : ''}
       data-selected={state.selected || ''}
@@ -547,7 +566,7 @@ function AtlasWorkspace({
         }
       }}
     >
-      <header className="app-header">
+      <header className="app-header" inert={cinematic} aria-hidden={cinematic}>
         <a
           className="brand"
           href={window.location.pathname}
@@ -608,8 +627,9 @@ function AtlasWorkspace({
             </>
           )}
         </div>
+        <button className="universe-launch" aria-label="3D universe" onClick={() => changeRenderer(true)}><Orbit size={14} /><span className="universe-launch-label">3D universe</span><span className="universe-launch-short" aria-hidden="true">3D</span></button>
       </header>
-      <div className="canvas-area" ref={canvasArea}>
+      <div className="canvas-area" ref={canvasArea} inert={cinematic} aria-hidden={cinematic}>
         <GraphCanvas
           graph={graph}
           layout={layout}
@@ -934,7 +954,7 @@ function AtlasWorkspace({
           </section>
         )}
       </div>
-      <footer className="app-footer">
+      <footer className="app-footer" inert={cinematic} aria-hidden={cinematic}>
         <div className="legend" aria-label="Graph relationship legend">
           <span>
             <i className="legend-dot handler" /> Entry
@@ -966,6 +986,7 @@ function AtlasWorkspace({
           </span>
         </button>
       </footer>
+      {cinematic && <Suspense fallback={<div className="universe-loading" role="status">Opening the universe…</div>}><CinematicGraph graph={graph} name={identity.name} tag={identity.tag} onExit={() => changeRenderer(false)} /></Suspense>}
     </main>
   );
 }

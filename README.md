@@ -34,6 +34,22 @@ npm run preview -- --host 127.0.0.1
 The production preview is at <http://127.0.0.1:4173>. `dist/` is generated and
 ignored. This repository does not configure a frontend deployment.
 
+## Cinematic 3D universe
+
+Choose **3D universe** in a graph workspace, or open
+<http://127.0.0.1:4173/?sample=aegra&view=cinematic> in the local preview.
+The immersive view shows all 5,920 recorded Aegra nodes and 7,294 relationships:
+symbols, route-qualified call occurrences and authentication context. Drag to
+orbit, scroll or use the zoom buttons, and click a node for its identity. Pause,
+reset and fullscreen controls sit below the scene. **2D graph** returns to the
+preserved investigation. Reduced motion disables ambient animation.
+
+The electric pulses illustrate static scan relationships; they are not measured
+runtime traffic. Unconnected star dust is decorative and excluded from counts.
+The renderer uses the selected scan, including API scans; it never replaces one
+with Aegra. WebGL is required for 3D, with a return to 2D when unavailable.
+See [cinematic verification](docs/ATLAS_CINEMATIC_VERIFICATION.md) for local checks and scope.
+
 ## Scan and investigate findings
 
 - **Run scan** sends the repository URL, optional revision, model, agent count and

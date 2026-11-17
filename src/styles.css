@@ -2420,3 +2420,16 @@ button svg {
     left: 50%;
   }
 }
+
+.universe-launch { display: inline-flex; align-items: center; gap: 7px; border: 1px solid #78cbb950; border-radius: 5px; background: #83d8bf0b; color: #b4e7dc; font: 11px var(--mono); padding: 8px 10px; white-space: nowrap; }
+.universe-loading { position: fixed; inset: 0; z-index: 101; display: grid; place-items: center; color: #7fc9bd; background: #03070e; font: 12px var(--mono); letter-spacing: 2px; }
+
+.universe-launch { flex-shrink: 0; }
+.universe-launch-short { display: none; }
+@media (max-width: 760px) {
+  .universe-launch { gap: 5px; padding: 7px; font-size: 10px; }
+  .universe-launch-label { display: none; }
+  .universe-launch-short { display: inline; }
+  .atlas-app > .app-header .repository-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .atlas-app > .app-header .header-right { flex-shrink: 0; }
+}
