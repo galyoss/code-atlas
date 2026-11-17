@@ -8,7 +8,7 @@ import threading
 import traceback
 from pathlib import Path
 
-from review.model import UnconfiguredModel
+from review.model import model_from_env
 from review.runner import review_graph
 
 from scanner.joern_runner import INSTALL, JoernNotFound, find_home
@@ -43,7 +43,7 @@ class ScanService:
         self._clone = clone
         self._export = export
         self._joern_home = joern_home
-        self._model_client = model_client if model_client is not None else UnconfiguredModel()
+        self._model_client = model_client if model_client is not None else model_from_env()
         self._queue: queue.Queue[str] = queue.Queue()
         self._thread: threading.Thread | None = None
 
