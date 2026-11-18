@@ -4,7 +4,7 @@ Atlas saves static code graphs for public GitHub repositories in an account-owne
 
 ## Run the workspace locally
 
-Use Node.js 22.12+, Python 3.11+, Java 21 and the Joern installation described in [the scan setup](docs/scans/README.md). Start the local product API in one terminal:
+Use Node.js 22.12+, Python 3.11+, Java 21 and the Joern installation described in [the scan setup](docs/scans/README.md). The workspace uses the built-in macOS sandbox for static analysis. Linux requires bubblewrap (`bwrap`) with unprivileged user namespaces. Start the local product API in one terminal:
 
 ```sh
 python3 -m venv .venv
