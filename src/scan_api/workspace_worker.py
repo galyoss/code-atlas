@@ -17,8 +17,7 @@ from pathlib import Path
 
 from scan_api.access import list_files
 from scan_api.workspace import Workspace, canonical_url
-from scanner.joern_runner import JoernNotFound
-from scanner.scan import export_repository
+from scan_api.workspace_sandbox import SandboxError, export_confined
 
 
 class BuildError(Exception):
@@ -47,7 +46,7 @@ def _worker_environment(work: Path) -> dict[str, str]:
     }
 
 
-def _discard_links(repo: Path) -> None:
+def _prepare_source(repo: Path) -> None:
     # The manifest retains every tracked path. No parser may follow a submitted link.
     for parent, directories, files in os.walk(repo, followlinks=False):
         for name in list(directories):
@@ -59,8 +58,14 @@ def _discard_links(repo: Path) -> None:
                 directories.remove(name)
         for name in files:
             target = Path(parent, name)
-            if target.is_symlink():
+            # Bun's bundled AST generator can read project-local runtime settings.
+            # Keep those tracked names in the manifest, outside the parser's input.
+            name_lower = name.lower()
+            if target.is_symlink() or name_lower in {"bunfig.toml", ".env"} or name_lower.startswith(".env."):
                 target.unlink()
+            elif os.access(target, os.X_OK):
+                # Git's regular-file modes are 100644 and 100755. Parsers only need read access.
+                target.chmod(0o644)
 
 
 def export_checkout(url: str, work: Path) -> dict:
@@ -82,8 +87,8 @@ def export_checkout(url: str, work: Path) -> dict:
     manifest = list_files(checkout)
     if manifest is None:
         raise BuildError("Could not record the repository file list.")
-    _discard_links(checkout)
-    graph = export_repository(checkout, cache=False)
+    _prepare_source(checkout)
+    graph = export_confined(checkout, work)
     if graph["repo"].get("remote") != url or graph["repo"].get("revision") != sha:
         raise BuildError("The exported graph does not match the checked-out revision.")
     return {"branch": branch, "files": manifest, "graph": graph}
@@ -176,6 +181,6 @@ if __name__ == "__main__":
     try:
         result = export_checkout(sys.argv[1], work_dir)
         (work_dir / "result.json").write_text(json.dumps(result), encoding="utf-8")
-    except (BuildError, JoernNotFound) as error:
+    except (BuildError, SandboxError) as error:
         (work_dir / "error.txt").write_text(str(error), encoding="utf-8")
         sys.exit(1)

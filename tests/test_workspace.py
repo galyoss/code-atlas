@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from scan_api.workspace import Workspace
 from scan_api.workspace_server import create_app
-from scan_api.workspace_worker import BuildError, _discard_links, _worker_environment
+from scan_api.workspace_worker import BuildError, _prepare_source, _worker_environment
 from scanner.scan import export_repository
 
 
@@ -184,6 +184,6 @@ def test_checkout_environment_and_source_links(tmp_path, monkeypatch):
     (repo / "app.py").symlink_to(outside / "safe.txt")
     (repo / "broken.py").symlink_to(repo / "missing")
     (repo / "real.py").write_text("inside")
-    _discard_links(repo)
+    _prepare_source(repo)
     assert [path.name for path in repo.iterdir()] == ["real.py"]
     assert (outside / "safe.txt").read_text() == "outside"
