@@ -16,7 +16,9 @@ from pathlib import Path
 from scan_api.access import AccessError, parse_github_url
 
 SESSION_SECONDS = 30 * 24 * 3600
-_PROJECT_COLUMNS = "id, repository, scan_id, created, status, progress, error, branch, sha"
+_PROJECT_COLUMNS = """id, repository, scan_id, created, status, progress, error, branch, sha,
+    (SELECT report FROM recorded_reviews r WHERE r.project_id = projects.id
+     AND r.scan_id = projects.scan_id AND r.revision = projects.sha) AS review"""
 
 
 class WorkspaceError(Exception):
@@ -60,6 +62,7 @@ def _session_hash(token: str) -> bytes:
 
 def _project(row: sqlite3.Row) -> dict:
     ready = row["status"] == "completed"
+    review = json.loads(row["review"]) if ready and row["review"] else {}
     return {
         "id": row["id"],
         "repositoryUrl": row["repository"],
@@ -68,8 +71,9 @@ def _project(row: sqlite3.Row) -> dict:
             "status": row["status"], "progress": row["progress"], "error": row["error"],
             "revision": row["branch"], "resolvedRevision": row["sha"] or "",
             "hasGraph": ready, "hasFiles": ready, "inProgress": row["status"] in ("queued", "running"),
-            "reviewing": False, "model": "", "agentCount": 0, "agreementThreshold": 0,
-            "votes": [], "findings": [],
+            "reviewing": False, "model": review.get("model", ""), "agentCount": review.get("agentCount", 0),
+            "agreementThreshold": review.get("agreementThreshold", 0),
+            "votes": review.get("votes", []), "findings": review.get("findings", []),
         },
     }
 
@@ -105,6 +109,10 @@ class Workspace:
                     id TEXT PRIMARY KEY, owner TEXT NOT NULL REFERENCES users(id), repository TEXT NOT NULL,
                     scan_id TEXT NOT NULL UNIQUE, created TEXT NOT NULL, status TEXT NOT NULL,
                     progress TEXT NOT NULL, error TEXT, branch TEXT, sha TEXT, UNIQUE(owner, repository)
+                );
+                CREATE TABLE IF NOT EXISTS recorded_reviews (
+                    project_id TEXT PRIMARY KEY REFERENCES projects(id), scan_id TEXT NOT NULL,
+                    revision TEXT NOT NULL, report TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS artifacts (
                     project_id TEXT PRIMARY KEY REFERENCES projects(id), graph TEXT NOT NULL, files TEXT NOT NULL
@@ -215,12 +223,25 @@ class Workspace:
         graph = result["graph"]
         if graph.get("schemaVersion") != "1.0.0" or not re.fullmatch("[0-9a-f]{40}", graph["repo"]["revision"]):
             raise ValueError("Invalid graph identity.")
+        revision = graph["repo"]["revision"]
+        review = result.get("review")
+        if review is not None and (
+            review.get("resolvedRevision") != revision
+            or review.get("repositoryUrl") != graph["repo"].get("remote")
+        ):
+            raise ValueError("Saved review does not belong to this repository revision.")
         with self.connect() as db:
             db.execute("INSERT INTO artifacts VALUES (?,?,?)", (project_id, json.dumps(graph), json.dumps(result["files"])))
+            if review is not None:
+                # Only a trusted artifact producer can supply this optional scan envelope.
+                db.execute("""
+                    INSERT INTO recorded_reviews SELECT id, scan_id, ?, ? FROM projects WHERE id = ?
+                """, (revision, json.dumps({key: review[key] for key in
+                      ("model", "agentCount", "agreementThreshold", "votes", "findings")}), project_id))
+            progress = "Static graph and saved review ready." if review is not None else "Static graph ready. Vulnerability review was not run."
             db.execute("""
-                UPDATE projects SET status = 'completed', progress = 'Static graph ready. Vulnerability review was not run.',
-                    branch = ?, sha = ? WHERE id = ?
-            """, (result["branch"], graph["repo"]["revision"], project_id))
+                UPDATE projects SET status = 'completed', progress = ?, branch = ?, sha = ? WHERE id = ?
+            """, (progress, result["branch"], revision, project_id))
 
     def fail(self, project_id: str, error: str) -> None:
         with self.connect() as db:

@@ -1,47 +1,45 @@
 # CodeAtlas
 
-A continuous code network for exploring a real Joern scan of **Aegra v0.11.0**,
-revision `46055c0`. Atlas opens on all **213 indexed symbols in 43 source files**,
-including 59 route handlers, with **244 recorded directed call pairs**. Of these,
-141 cross source files. Every aggregated pair retains its route-specific evidence;
-1,222 recorded occurrences support the canonical links.
+Atlas saves static code graphs for public GitHub repositories in an account-owned workspace. Each repository is one project. Its 3D graph, 2D inspection, route list and issue view share the same saved revision. The [bundled Aegra scan](docs/scans/README.md) is also available as a public example.
 
-The unchanged document and provenance are in [`docs/scans`](docs/scans/README.md).
+## Run the workspace locally
 
-## Run locally
+Use Node.js 22.12+, Python 3.11+, Java 21 and the Joern installation described in [the scan setup](docs/scans/README.md). Start the local product API in one terminal:
 
-Use Node.js 22.12 or newer.
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
+# Export JAVA_HOME and JOERN_HOME for your installation; add their launchers to PATH.
+.venv/bin/python -m uvicorn scan_api.workspace_server:app --host 127.0.0.1 --port 8080
+```
+
+Start the frontend in another terminal:
 
 ```sh
 npm ci
 npm run dev -- --host 127.0.0.1
 ```
 
-Open <http://127.0.0.1:5173>. The home screen submits a GitHub repository to the
-[Scan API](#scan-api), lists saved scans and opens the bundled Aegra graph as a
-labelled sample (`?sample=aegra`). Start `scan-api` on port 8080 to scan; Vite
-proxies `/api` to it (set `SCAN_API_URL` for another address). The sample needs no
-backend. Fonts, icons and the sample asset are served locally. The committed lockfile supports
-npm 10.9; dependency refreshes used npm 11.6.2 to avoid an npm 10 optional-peer bug.
+Open <http://127.0.0.1:5173>, create an account, and paste a public GitHub URL. The worker clones the default branch anonymously, builds a static graph with the existing FastAPI, Express or Rails adapter, and saves the JSON, tracked files and commit SHA. Duplicate submissions by the same account reopen that project. The project selector and the four tabs are available throughout the workspace. A selected route opens its trace in 2D. **Issues Found** shows the available review coverage; workspace graph jobs do not run a vulnerability review.
+
+Accounts, sessions, projects and graphs live under `~/.local/share/code-atlas/workspace`. Set `ATLAS_WORKSPACE_DIR` to another private directory outside the web root to change it. Run one API process per workspace directory. The worker resumes interrupted scans on startup. Vite proxies same-origin workspace API requests to the loopback API.
 
 ```sh
-npm run typecheck
 npm test
 npm run build
 npm run preview -- --host 127.0.0.1
 ```
 
-The production preview is at <http://127.0.0.1:4173>. `dist/` is generated and
-ignored. This repository does not configure a frontend deployment.
+The preview serves <http://127.0.0.1:4173>. The public sample link also works with only the frontend running. The standalone [scan API](#scan-api) is a separate interface for historical scans.
 
 ## Cinematic 3D universe
 
-Choose **3D universe** in a graph workspace, or open
+Choose **3D Mode** in a project workspace, or open
 <http://127.0.0.1:4173/?sample=aegra&view=cinematic> in the local preview.
 The immersive view shows all 5,920 recorded Aegra nodes and 7,294 relationships:
 symbols, route-qualified call occurrences and authentication context. Drag to
 orbit, scroll or use the zoom buttons, and click a node for its identity. Pause,
-reset and fullscreen controls sit below the scene. **2D graph** returns to the
+reset and fullscreen controls sit below the scene. **2D Mode** returns to the
 preserved investigation. Reduced motion disables ambient animation.
 
 The electric pulses illustrate static scan relationships; they are not measured
@@ -73,24 +71,9 @@ Focus temporarily reveals required nodes through the current filters. Clear
 the selection or click empty space to restore the original filtered view.
 See [semantic focus verification](docs/ATLAS_SEMANTIC_FOCUS_VERIFICATION.md).
 
-## Scan and investigate findings
+## Routes and recorded issues
 
-- **Run scan** sends the repository URL, optional revision, model, agent count and
-  agreement threshold to `POST /scans`. Validation and repository-access errors
-  appear before a scan starts; a missing model provider is flagged on the form.
-- `?scan=<id>` opens a scan. Until its graph exists, a progress screen polls
-  `GET /scans/{id}/summary`. Failed and interrupted scans keep their settings and
-  offer **Run again**. The graph opens as soon as it exists, while review continues.
-- The left rail holds the report beside the graph: **Findings**, **Endpoints**,
-  **Files** and **View** (the graph controls). Findings lists agreed findings and
-  candidates (present votes below the threshold) separately, with every agent's
-  vote and the reasons for inconclusive votes. Selecting one opens its entry flow,
-  marks the recorded path from the handler to the cited data access and opens its
-  evidence on the right. Each step of the path selects its node on the graph.
-  Nodes that carry a finding have a marker, and selecting one links back to it.
-- **Endpoints** lists every route; selecting one traces it to data. **Files** is
-  the whole tracked project tree recorded at clone time. Files with indexed code
-  are highlighted and open their source-file group on the graph.
+**List of Routes** reads HTTP methods, paths, handlers and source locations from the open document. Filter by method or coverage and select a result to inspect its trace. **Issues Found** distinguishes recorded review evidence from a graph-only scan. The protected **Graph JSON** download exports the selected project's saved document. The explicit sample downloads its bundled document.
 
 ## Explore the network
 
