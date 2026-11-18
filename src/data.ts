@@ -21,12 +21,8 @@ export async function loadSample(signal: AbortSignal) {
   return openDocument(document);
 }
 
-export class EmptyScanError extends Error {}
-
 export function openDocument(document: GraphDocument): AtlasGraph {
-  if (!document.routes?.length || !document.symbolIndex?.length)
-    throw new EmptyScanError(
-      'The scanner recorded no HTTP routes in this repository, so there is no request flow to draw.',
-    );
+  if (!Array.isArray(document.routes) || !Array.isArray(document.symbolIndex))
+    throw new Error('The scan document is missing its route or symbol index.');
   return adaptGraph(document);
 }

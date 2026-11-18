@@ -145,6 +145,9 @@ function ScopeEvidence({
   const { document } = graph;
   const identity = sourceIdentity(source);
   const scan = source.kind === 'api' ? source.scan : null;
+  const hasReview =
+    !!scan &&
+    (scan.reviewing || scan.votes.length > 0 || scan.findings.length > 0);
   return (
     <>
       {document.note && <p>{document.note}</p>}
@@ -153,11 +156,11 @@ function ScopeEvidence({
         and {document.symbolIndex.length} indexed symbols are included. A static
         scan does not establish which endpoints are deployed. Coverage is
         route-oriented, not a complete repository call graph.{' '}
-        {scan
+        {hasReview && scan
           ? scan.reviewing
             ? 'Review agents are still voting on routes.'
             : `Review agents voted on ${new Set(scan.votes.map((vote) => vote.routeId)).size} of ${document.routes.length} routes.`
-          : 'No security review agents ran and no findings are supplied.'}
+          : 'No security review results were recorded for this revision.'}
       </p>
       <dl>
         <dt>Repository</dt>
@@ -176,12 +179,16 @@ function ScopeEvidence({
           <>
             <dt>Scan</dt>
             <dd>{scan.id}</dd>
-            <dt>Review model</dt>
-            <dd>{scan.model}</dd>
-            <dt>Agents / agreement</dt>
-            <dd>
-              {scan.agentCount} / {scan.agreementThreshold}
-            </dd>
+            {hasReview && (
+              <>
+                <dt>Review model</dt>
+                <dd>{scan.model}</dd>
+                <dt>Agents / agreement</dt>
+                <dd>
+                  {scan.agentCount} / {scan.agreementThreshold}
+                </dd>
+              </>
+            )}
             <dt>Status</dt>
             <dd>{scan.progress}</dd>
           </>

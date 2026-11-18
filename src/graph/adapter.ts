@@ -211,7 +211,7 @@ export function adaptGraph(document: GraphDocument): AtlasGraph {
     groups: [...groups.values()],
     baseIds: document.symbolIndex.map((symbol) => symbol.id),
     edges: [...pairs.values(), ...edges],
-    defaultId: document.routes[0].handler.symbolId,
+    defaultId: document.routes[0]?.handler.symbolId ?? document.symbolIndex[0]?.id ?? '',
   };
 }
 

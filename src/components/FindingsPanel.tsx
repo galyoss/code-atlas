@@ -13,8 +13,8 @@ type Filter = 'all' | 'finding' | 'candidate';
 
 const statusText = (item: FindingItem) =>
   item.kind === 'finding'
-    ? `Finding · ${item.presentCount} of ${item.votes.length} agents agree`
-    : `Candidate · ${item.presentCount} present, below the threshold of ${item.threshold}`;
+    ? `Finding · ${item.presentCount} supporting ${item.presentCount === 1 ? 'vote' : 'votes'} recorded`
+    : `Candidate · ${item.presentCount} supporting ${item.presentCount === 1 ? 'vote' : 'votes'}`;
 
 function FindingDetail({
   graph,
@@ -36,9 +36,8 @@ function FindingDetail({
       </p>
       {item.partialRoute && (
         <p className="notice is-warning">
-          The path to the cited access is fully recorded, but this route has
-          unresolved calls elsewhere. Check that none of them verifies ownership
-          before the access.
+          This route has gaps in its recorded coverage. Inspect its source for
+          checks outside the recorded path.
         </p>
       )}
       {item.access ? (
@@ -115,6 +114,11 @@ function FindingDetail({
       </section>
       <section className="evidence-block">
         <h3>Agent votes</h3>
+        {!item.votes.length && (
+          <p className="muted-note">
+            No individual votes were saved for this finding.
+          </p>
+        )}
         <ul className="vote-list">
           {item.votes.map((vote) => (
             <li key={vote.id}>
@@ -180,18 +184,24 @@ export function FindingsList({
       aria-label="Findings"
     >
       <p className="rail-note review-summary">
-        {scan.reviewing
-          ? `Reviewing… ${index.reviewedRoutes} of ${graph.document.routes.length} routes have votes so far.`
-          : `${index.reviewedRoutes} of ${graph.document.routes.length} routes have votes from ${scan.agentCount} agents (${scan.model}); ${scan.agreementThreshold} must agree.`}{' '}
-        {verdicts.present} present · {verdicts.absent} absent ·{' '}
-        {verdicts.inconclusive} inconclusive.
+        Recorded votes for {index.reviewedRoutes} of{' '}
+        {graph.document.routes.length} routes. {verdicts.present} present ·{' '}
+        {verdicts.absent} absent · {verdicts.inconclusive} inconclusive.
       </p>
-      {scan.status === 'partial' && !scan.reviewing && (
-        <p className="notice is-warning">
-          {scan.progress} Inconclusive votes include failed or incomplete model
-          calls, so a route without a finding is not cleared.
+      {scan.findings.length > counts.finding && (
+        <p className="notice">
+          {scan.findings.length - counts.finding} saved finding(s) cite routes
+          outside this graph.
         </p>
       )}
+      {scan.status === 'partial' &&
+        !scan.reviewing &&
+        verdicts.inconclusive > 0 && (
+          <p className="notice is-warning">
+            {scan.progress} Inconclusive votes include failed or incomplete
+            model calls, so a route without a finding is not cleared.
+          </p>
+        )}
       {index.inconclusiveReasons.length > 0 && (
         <details className="inconclusive-reasons">
           <summary>Why votes were inconclusive</summary>
@@ -243,7 +253,7 @@ export function FindingsList({
         <p className="rail-note">
           {scan.reviewing
             ? 'No present votes yet.'
-            : 'No agent voted present on any route.'}
+            : 'No findings or candidates are linked to a recorded route.'}
         </p>
       ) : !shown.length ? (
         <p className="rail-note">No findings match this filter.</p>

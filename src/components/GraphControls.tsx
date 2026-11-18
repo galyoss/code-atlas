@@ -39,7 +39,7 @@ const views = [
     icon: Database,
   },
 ] as const;
-export type RailTab = 'findings' | 'endpoints' | 'files' | 'view';
+export type RailTab = 'endpoints' | 'files' | 'view';
 /** The rail hosts the report's lists beside the graph; View keeps the graph controls. */
 export function GraphControls({
   graph,
@@ -90,7 +90,7 @@ export function GraphControls({
       }}
     >
       <div className="rail-header">
-        <span>EXPLORE</span>
+        <span>Graph controls</span>
         <button
           className="icon-button"
           ref={closeButton}
