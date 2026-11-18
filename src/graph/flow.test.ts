@@ -3,6 +3,7 @@ import raw from '../../docs/scans/aegra-v0.11.0.graph.json';
 import { adaptGraph } from './adapter';
 import { flowIndex } from './flow';
 import {
+  activeFlow,
   initialNavigation,
   navigate,
   navigationVisibleIds,
@@ -152,6 +153,38 @@ describe('recorded entry-to-data evidence', () => {
       expect(sorted(actual[key])).toEqual(
         sorted(new Set([...oracle(original)[key], ...oracle(other)[key]])),
       );
+    const originalState = navigate(adapted, initialNavigation(), {
+      type: 'reveal',
+      id: original.handler.symbolId,
+      routeId: original.id,
+    });
+    const otherState = navigate(adapted, originalState, {
+      type: 'reveal',
+      id: other.handler.symbolId,
+      routeId: other.id,
+    });
+    for (const [route, state] of [
+      [original, originalState],
+      [other, otherState],
+    ] as const) {
+      expect(state.flowRoute).toBe(route.id);
+      const expected = oracle(route);
+      const active = activeFlow(adapted, state)!;
+      for (const key of ['paths', 'terminals', 'definitions', 'edges'] as const)
+        expect(sorted(active[key])).toEqual(sorted(expected[key]));
+      const visible = navigationVisibleIds(adapted, state);
+      for (const id of actual.paths)
+        expect(visible.has(id)).toBe(expected.paths.has(id));
+    }
+    expect(navigate(adapted, otherState, { type: 'back' })).toEqual(
+      originalState,
+    );
+    const wholeHandler = navigate(adapted, otherState, {
+      type: 'select',
+      id: other.handler.symbolId,
+    });
+    expect(wholeHandler.flowRoute).toBeNull();
+    expect(activeFlow(adapted, wholeHandler)).toBe(actual);
     expect(actual.terminals.size).toBe(70);
     const authFlow = [...flowIndex(adapted).entries.values()].find((flow) =>
       [...flow.edges].some((id) => id.startsWith('context:')),

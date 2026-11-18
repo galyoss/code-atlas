@@ -12,6 +12,7 @@ const CinematicGraph = lazy(() => import('./components/CinematicGraph'));
 
 export type ProjectView = '3d' | '2d' | 'routes' | 'issues';
 export interface TraceTarget {
+  routeId: string;
   handlerId: string;
   findingId?: string;
 }

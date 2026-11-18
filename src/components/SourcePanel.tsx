@@ -253,6 +253,7 @@ interface Props {
   source: ScanSource;
   node: GraphNode;
   mode: 'source' | 'scope';
+  routeId?: string;
   onClose: () => void;
   returnFocus: RefObject<HTMLButtonElement | null>;
 }
@@ -261,6 +262,7 @@ export function SourcePanel({
   source,
   node,
   mode,
+  routeId,
   onClose,
   returnFocus,
 }: Props) {
@@ -453,8 +455,10 @@ export function SourcePanel({
             <section className="evidence-block">
               <h3>Recorded call relationships</h3>
               <p>
-                Directed static relationships, aggregated across route slices.
-                Record counts are evidence occurrences, not execution frequency.
+                {routeId
+                  ? 'Directed static relationships in the selected route.'
+                  : 'Directed static relationships, aggregated across route slices.'}{' '}
+                Counts reflect recorded occurrences.
               </p>
               {graph.edges
                 .filter(
@@ -463,6 +467,10 @@ export function SourcePanel({
                     (edge.from === node.id || edge.to === node.id),
                 )
                 .map((edge) => {
+                  const evidence = routeId
+                    ? edge.evidence.filter((ref) => ref.routeId === routeId)
+                    : edge.evidence;
+                  if (!evidence.length) return null;
                   const outgoing = edge.from === node.id;
                   const other = graph.nodes.get(
                     outgoing ? edge.to : edge.from,
@@ -471,12 +479,12 @@ export function SourcePanel({
                     <details key={edge.id}>
                       <summary>
                         {outgoing ? 'Calls' : 'Called by'} {other.name} ·{' '}
-                        {edge.evidence.length} records
+                        {evidence.length} records
                       </summary>
                       <p className="source-location">
                         {other.symbol?.qualifiedName}
                       </p>
-                      {edge.evidence.map((ref) => {
+                      {evidence.map((ref) => {
                         const occurrence = graph.nodes.get(
                           callNodeId(ref.routeId, ref.callId, ref.authStepId),
                         )!;

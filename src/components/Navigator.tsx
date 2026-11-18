@@ -33,11 +33,13 @@ export function EndpointsList({
   graph,
   findings,
   activeEntry,
+  activeRoute,
   onOpen,
 }: {
   graph: AtlasGraph;
   findings: FindingIndex | null;
   activeEntry: string | null;
+  activeRoute: string | null;
   onOpen: (route: Route) => void;
 }) {
   const [query, setQuery] = useState('');
@@ -79,7 +81,13 @@ export function EndpointsList({
               <li key={route.id}>
                 <button
                   aria-current={
-                    activeEntry === route.handler.symbolId ? 'true' : undefined
+                    (
+                      activeRoute
+                        ? activeRoute === route.id
+                        : activeEntry === route.handler.symbolId
+                    )
+                      ? 'true'
+                      : undefined
                   }
                   onClick={() => onOpen(route)}
                   title={`${route.handler.qualifiedName}\n${route.handler.range.file}:${route.handler.range.startLine}`}

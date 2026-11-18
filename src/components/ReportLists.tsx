@@ -148,7 +148,11 @@ export function ReportLists({
               scan={scan}
               focusedId={null}
               onFocus={(item) =>
-                onInspect({ handlerId: item.handlerId, findingId: item.id })
+                onInspect({
+                  routeId: item.route.id,
+                  handlerId: item.handlerId,
+                  findingId: item.id,
+                })
               }
             />
           ) : (
@@ -167,7 +171,10 @@ export function ReportLists({
               <li key={route.id}>
                 <button
                   onClick={() =>
-                    onInspect({ handlerId: route.handler.symbolId })
+                    onInspect({
+                      routeId: route.id,
+                      handlerId: route.handler.symbolId,
+                    })
                   }
                   aria-label={`Open 2D trace for ${route.httpMethod} ${route.pathTemplate}`}
                 >

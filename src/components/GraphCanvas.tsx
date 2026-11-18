@@ -23,6 +23,7 @@ import { placeLabels, type LabelViewport } from '../graph/labels';
 import { fitCamera, zoomCamera, type NetworkLayout } from '../graph/layout';
 import type { AtlasGraph, Point } from '../graph/types';
 import {
+  activeFlow,
   branchOpen,
   type NavigationAction,
   type NavigationState,
@@ -72,9 +73,7 @@ export function GraphCanvas({
   const poseIds = new Set(poses.keys());
   const edges = visibleEdges(graph, poseIds, state.collapsed);
   const active = hovered || state.selected;
-  const flow = state.flowEntry
-    ? flowIndex(graph).entries.get(state.flowEntry)!
-    : null;
+  const flow = activeFlow(graph, state);
   const focusPaths = useMemo(
     () =>
       flow

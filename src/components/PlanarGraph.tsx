@@ -16,7 +16,6 @@ import {
   type FindingIndex,
   type FindingItem,
 } from '../graph/findings';
-import { flowIndex } from '../graph/flow';
 import { ViewAnchors } from '../graph/view-layout';
 import { matchingSymbols } from '../graph/catalog';
 import type { LabelViewport } from '../graph/labels';
@@ -24,12 +23,13 @@ import { initialCamera, layoutGraph } from '../graph/layout';
 import {
   primaryNodeAction,
   navigationVisibleIds,
+  activeFlow,
   initialNavigation,
   navigate,
   type NavigationAction,
   type NavigationState,
 } from '../graph/navigation';
-import type { AtlasGraph } from '../graph/types';
+import type { AtlasGraph, Route } from '../graph/types';
 import { GraphCanvas } from './GraphCanvas';
 import { SourcePanel } from './SourcePanel';
 import { GraphControls, type RailTab } from './GraphControls';
@@ -77,17 +77,25 @@ export function PlanarGraph({
   // The path stays emphasized while its entry flow is active; Back restores it.
   const findingPath = useMemo(
     () =>
-      focused && state.flowEntry === focused.handlerId
+      focused &&
+      state.flowEntry === focused.handlerId &&
+      (!state.flowRoute || state.flowRoute === focused.route.id)
         ? new Set(focused.path)
         : null,
-    [focused, state.flowEntry],
+    [focused, state.flowEntry, state.flowRoute],
   );
   const findingMarks = useMemo(() => {
     const marks = new Map<string, 'finding' | 'candidate'>();
-    for (const [id, items] of findings?.byNode || [])
-      marks.set(id, nodeFindingKind(items)!);
+    for (const [id, items] of findings?.byNode || []) {
+      const applicable =
+        state.flowRoute && id === state.flowEntry
+          ? items.filter((item) => item.route.id === state.flowRoute)
+          : items;
+      const kind = nodeFindingKind(applicable);
+      if (kind) marks.set(id, kind);
+    }
     return marks;
-  }, [findings]);
+  }, [findings, state.flowEntry, state.flowRoute]);
   const [labelViewport, setLabelViewport] = useState<LabelViewport>();
   const sourceButton = useRef<HTMLButtonElement>(null),
     scopeButton = useRef<HTMLButtonElement>(null),
@@ -107,6 +115,7 @@ export function PlanarGraph({
       state.collapsed,
       state.revealed,
       state.flowEntry,
+      state.flowRoute,
       state.view,
     ],
   );
@@ -115,15 +124,30 @@ export function PlanarGraph({
     [anchors, state.view, visible],
   );
   const matches = useMemo(() => matchingSymbols(graph, query), [graph, query]);
-  const selected = state.selected ? graph.nodes.get(state.selected)! : null;
-  const selectedAction = selected
-    ? primaryNodeAction(graph, state, selected.id)
-    : null;
-  const flow = state.flowEntry
-    ? flowIndex(graph).entries.get(state.flowEntry)!
-    : null;
+  const flow = activeFlow(graph, state);
   const flowHandler = state.flowEntry
     ? graph.nodes.get(state.flowEntry)!
+    : null;
+  const route = flowHandler?.groupedRoutes?.find(
+    (route) => route.id === state.flowRoute,
+  );
+  const selectedNode = state.selected ? graph.nodes.get(state.selected)! : null;
+  const selected =
+    selectedNode && route && selectedNode.id === route.handler.symbolId
+      ? {
+          ...selectedNode,
+          route,
+          groupedRoutes: [route],
+          accesses: selectedNode.accesses.filter(
+            (record) => record.route.id === route.id,
+          ),
+          authSteps: selectedNode.authSteps.filter(
+            (record) => record.route.id === route.id,
+          ),
+        }
+      : selectedNode;
+  const selectedAction = selected
+    ? primaryNodeAction(graph, state, selected.id)
     : null;
   const selectedEffect = selected ? dataEffect(selected) : null;
   const selectedAccesses = selected ? accessSummary(selected) : null;
@@ -143,10 +167,10 @@ export function PlanarGraph({
       handledTrace.current = trace;
       const position = layout.positions.get(trace.handlerId);
       const scale = Math.max(0.8, state.camera.scale);
-      dispatch({ type: 'view', view: 'code' });
       dispatch({
         type: 'reveal',
         id: trace.handlerId,
+        routeId: trace.routeId,
         camera: position
           ? {
               scale,
@@ -229,26 +253,29 @@ export function PlanarGraph({
   /** Open the finding's entry flow; the cited path is emphasized within it. */
   function focusFinding(item: FindingItem | null) {
     setFocusedId(item?.id || null);
-    if (item && state.flowEntry !== item.handlerId)
+    if (item && state.flowRoute !== item.route.id)
       dispatch({
         type: 'reveal',
         id: item.handlerId,
+        routeId: item.route.id,
         camera: centered(item.handlerId),
       });
   }
   function stepTo(item: FindingItem, id: string) {
-    if (state.flowEntry !== item.handlerId)
-      dispatch({ type: 'reveal', id: item.handlerId });
-    dispatch({ type: 'select', id });
+    if (state.flowRoute !== item.route.id || id === item.handlerId)
+      dispatch({ type: 'reveal', id: item.handlerId, routeId: item.route.id });
+    if (id !== item.handlerId) dispatch({ type: 'select', id });
   }
   function openFinding(item: FindingItem) {
     findingOpener.current = document.activeElement as HTMLElement | null;
     setPanel('finding');
     focusFinding(item);
   }
-  function openEndpoint(handlerId: string) {
-    if (state.view === 'code' && state.flowEntry === handlerId) return;
-    dispatch({ type: 'reveal', id: handlerId, camera: centered(handlerId) });
+  function openEndpoint(route: Route) {
+    if (state.view === 'code' && state.flowRoute === route.id) return;
+    const id = route.handler.symbolId;
+    dispatch({ type: 'reveal', id, routeId: route.id, camera: centered(id) });
+    setPanel(null);
   }
   function openFile(groupId: string) {
     if (state.view !== 'code') dispatch({ type: 'view', view: 'code' });
@@ -270,7 +297,11 @@ export function PlanarGraph({
     () => projectTree(graph, manifest?.paths || null, findings),
     [graph, manifest, findings],
   );
-  const selectedFindings = selected ? findings?.byNode.get(selected.id) : null;
+  const selectedFindings = selected
+    ? findings?.byNode
+        .get(selected.id)
+        ?.filter((item) => !route || item.route.id === route.id)
+    : null;
   function findNext() {
     if (!matches.length) return;
     const index = matches.indexOf(state.selected || '');
@@ -297,6 +328,7 @@ export function PlanarGraph({
       data-selected={state.selected || ''}
       data-scope="network"
       data-flow-entry={state.flowEntry || ''}
+      data-flow-route={state.flowRoute || ''}
       data-flow-paths={JSON.stringify(flow ? [...flow.paths] : [])}
       data-flow-terminals={JSON.stringify(flow ? [...flow.terminals] : [])}
       data-view={state.view}
@@ -355,7 +387,8 @@ export function PlanarGraph({
                 graph={graph}
                 findings={findings}
                 activeEntry={state.flowEntry}
-                onOpen={(route) => openEndpoint(route.handler.symbolId)}
+                activeRoute={state.flowRoute}
+                onOpen={openEndpoint}
               />
             )}
           </GraphControls>
@@ -454,7 +487,11 @@ export function PlanarGraph({
               role="status"
             >
               <span className="flow-eyebrow">ENTRY → DATA</span>
-              <strong>{flowHandler!.name}</strong>
+              <strong>
+                {route
+                  ? `${route.httpMethod} ${route.pathTemplate}`
+                  : flowHandler!.name}
+              </strong>
               <p>
                 {flow.terminals.size
                   ? `${flow.terminals.size} recorded data operations · ${[...flow.terminals].filter((id) => graph.nodes.get(id)!.accesses.length).length} with named objects`
@@ -497,6 +534,7 @@ export function PlanarGraph({
               source={source}
               node={selected || graph.nodes.get(graph.defaultId)!}
               mode={panel}
+              routeId={selectedNode === flowHandler ? route?.id : undefined}
               onClose={() => setPanel(null)}
               returnFocus={panel === 'source' ? sourceButton : scopeButton}
             />
@@ -559,7 +597,7 @@ export function PlanarGraph({
                 )}
               </div>
               <div className="selection-actions">
-                {selectedFindings && (
+                {!!selectedFindings?.length && (
                   <button
                     className={`secondary-button related-findings ${nodeFindingKind(selectedFindings)}`}
                     onClick={() =>

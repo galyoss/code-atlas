@@ -1,4 +1,4 @@
-import type { AtlasGraph } from './types';
+import type { AtlasGraph, GraphEdge } from './types';
 import { persistenceEffect } from './semantics';
 
 export interface RecordedFlow {
@@ -10,6 +10,7 @@ export interface RecordedFlow {
 }
 export interface FlowIndex {
   entries: Map<string, RecordedFlow>;
+  routes: Map<string, RecordedFlow>;
   overview: RecordedFlow;
   terminals: Set<string>;
 }
@@ -20,6 +21,14 @@ const indexes = new WeakMap<AtlasGraph, FlowIndex>();
 export function flowIndex(graph: AtlasGraph): FlowIndex {
   const cached = indexes.get(graph);
   if (cached) return cached;
+  const outgoing = new Map<string, GraphEdge[]>();
+  for (const edge of graph.edges) {
+    // Canonical pairs aggregate across routes. Only occurrence and definition edges trace a slice.
+    if (edge.aggregated) continue;
+    const group = outgoing.get(edge.from);
+    if (group) group.push(edge);
+    else outgoing.set(edge.from, [edge]);
+  }
   function project(terminals: Set<string>, roots: string[] = []): RecordedFlow {
     const paths = new Set(roots),
       definitions = new Set<string>();
@@ -36,24 +45,22 @@ export function flowIndex(graph: AtlasGraph): FlowIndex {
       if (!node.canonical && node.symbol) definitions.add(node.symbol.id);
     }
     const edges = new Set<string>();
-    for (const edge of graph.edges) {
-      // Canonical pairs can contain evidence from other routes. The occurrence
-      // edges are the exact paths; definition edges provide separate context.
-      if (edge.aggregated) continue;
-      if (
-        paths.has(edge.from) &&
-        (paths.has(edge.to) ||
-          (edge.kind === 'definition' && definitions.has(edge.to)))
-      )
-        edges.add(edge.id);
-    }
+    for (const id of paths)
+      for (const edge of outgoing.get(id) ?? [])
+        if (
+          paths.has(edge.to) ||
+          (edge.kind === 'definition' && definitions.has(edge.to))
+        )
+          edges.add(edge.id);
     return { paths, terminals, definitions, edges };
   }
-  const entries = new Map<string, RecordedFlow>(),
+  const routes = new Map<string, RecordedFlow>(),
+    entries = new Map<string, RecordedFlow>(),
     terminals = new Set<string>();
   const named = new Set<string>();
   for (const id of graph.baseIds) {
-    if (!graph.nodes.get(id)!.groupedRoutes?.length) continue;
+    const registrations = graph.nodes.get(id)!.groupedRoutes;
+    if (!registrations?.length) continue;
     const entryTerminals = new Set<string>();
     function visit(id: string): boolean {
       const node = graph.nodes.get(id)!;
@@ -70,9 +77,21 @@ export function flowIndex(graph: AtlasGraph): FlowIndex {
       return terminal || deeper;
     }
     graph.nodes.get(id)!.children.forEach(visit);
-    entries.set(id, project(entryTerminals, [id]));
+    const combined = project(entryTerminals, [id]);
+    entries.set(id, combined);
+    if (registrations.length === 1) {
+      routes.set(registrations[0].id, combined);
+    } else {
+      const byRoute = new Map(
+        registrations.map((route) => [route.id, new Set<string>()]),
+      );
+      for (const terminal of entryTerminals)
+        byRoute.get(graph.nodes.get(terminal)!.route!.id)!.add(terminal);
+      for (const [routeId, routeTerminals] of byRoute)
+        routes.set(routeId, project(routeTerminals, [id]));
+    }
   }
-  const result = { entries, overview: project(named), terminals };
+  const result = { entries, routes, overview: project(named), terminals };
   indexes.set(graph, result);
   return result;
 }

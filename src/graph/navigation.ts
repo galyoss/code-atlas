@@ -7,6 +7,7 @@ export interface ViewSnapshot {
   revealed: Set<string>;
   accessFocus: string | null;
   flowEntry: string | null;
+  flowRoute: string | null;
   collapsed: Set<string>;
   selected: string | null;
   camera: Camera;
@@ -19,7 +20,7 @@ export interface NavigationState extends ViewSnapshot {
 export type NavigationAction =
   | { type: 'select'; id: string | null }
   | { type: 'toggle'; id: string }
-  | { type: 'reveal'; id: string; camera?: Camera }
+  | { type: 'reveal'; id: string; routeId?: string; camera?: Camera }
   | { type: 'accesses'; id: string }
   | { type: 'clear-flow' }
   | { type: 'view'; view: GraphView }
@@ -33,6 +34,7 @@ const snapshot = (state: ViewSnapshot): ViewSnapshot => ({
   revealed: new Set(state.revealed),
   accessFocus: state.accessFocus,
   flowEntry: state.flowEntry,
+  flowRoute: state.flowRoute,
   collapsed: new Set(state.collapsed),
   selected: state.selected,
   camera: { ...state.camera },
@@ -44,6 +46,7 @@ export const initialNavigation = (railOpen = true): NavigationState => ({
   revealed: new Set(),
   accessFocus: null,
   flowEntry: null,
+  flowRoute: null,
   collapsed: new Set(),
   selected: null,
   camera: { x: 0, y: 0, scale: 1 },
@@ -58,13 +61,20 @@ export function resolution(graph: AtlasGraph, state: ViewSnapshot) {
       ? 'files'
       : 'mixed';
 }
+export function activeFlow(graph: AtlasGraph, state: ViewSnapshot) {
+  if (!state.flowEntry) return null;
+  const index = flowIndex(graph);
+  return state.flowRoute
+    ? index.routes.get(state.flowRoute)!
+    : index.entries.get(state.flowEntry)!;
+}
 /** Visibility layers are derived independently; Files temporarily hides all detail. */
 export function detailVisibility(graph: AtlasGraph, state: ViewSnapshot) {
   const ids = new Set(state.revealed),
     index = flowIndex(graph);
   if (state.view === 'data') for (const id of index.overview.paths) ids.add(id);
-  if (state.flowEntry)
-    for (const id of index.entries.get(state.flowEntry)!.paths) ids.add(id);
+  const focus = activeFlow(graph, state);
+  if (focus) for (const id of focus.paths) ids.add(id);
   return ids;
 }
 export function navigationVisibleIds(graph: AtlasGraph, state: ViewSnapshot) {
@@ -80,7 +90,7 @@ export function automaticDetail(
   state: ViewSnapshot,
   id: string,
 ) {
-  const flow = state.flowEntry && flowIndex(graph).entries.get(state.flowEntry);
+  const flow = activeFlow(graph, state);
   return (
     !!flow &&
     flow.paths.has(id) &&
@@ -129,7 +139,7 @@ export function navigate(
     ((!action.id && !state.flowEntry) ||
       (action.id &&
         (!graph.nodes.get(action.id)!.groupedRoutes?.length ||
-          state.flowEntry === action.id)))
+          (state.flowEntry === action.id && !state.flowRoute))))
   )
     return state;
   if ('id' in action && action.id && !graph.nodes.has(action.id)) return state;
@@ -209,15 +219,26 @@ export function navigate(
     if (action.id && !visible.has(action.id)) return state;
     next.selected = action.id;
     if (action.id === null) next.flowEntry = null;
-    else if (graph.nodes.get(action.id)!.groupedRoutes?.length)
+    else if (graph.nodes.get(action.id)!.groupedRoutes?.length) {
       next.flowEntry = action.id;
+      next.flowRoute = null;
+    }
     next.accessFocus = null;
   } else if (action.type === 'reveal') {
     const node = graph.nodes.get(action.id)!;
     if (!node.canonical) return state;
     next.collapsed.delete(node.groupId!);
     next.selected = action.id;
-    if (node.groupedRoutes?.length) next.flowEntry = action.id;
+    if (
+      action.routeId &&
+      !node.groupedRoutes?.some((route) => route.id === action.routeId)
+    )
+      return state;
+    if (node.groupedRoutes?.length) {
+      next.flowEntry = action.id;
+      next.flowRoute = action.routeId ?? null;
+      if (action.routeId) next.view = 'code';
+    }
     if (action.camera) next.camera = action.camera;
     next.accessFocus = null;
   } else {
@@ -249,6 +270,7 @@ export function navigate(
     next.selected = node.id;
     next.accessFocus = null;
   }
+  if (!next.flowEntry) next.flowRoute = null;
   return next;
 }
 
