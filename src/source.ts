@@ -1,9 +1,9 @@
-import { repositoryName, scanGraphUrl, type ScanSummary } from './api';
+import { repositoryName, type ScanSummary } from './api';
 import { sample } from './data';
 
 /** Where the open graph came from. The sample is always labelled as such. */
 export type ScanSource =
-  { kind: 'sample' } | { kind: 'api'; scan: ScanSummary; projectId?: string };
+  { kind: 'sample' } | { kind: 'api'; scan: ScanSummary; projectId: string };
 
 export function sourceIdentity(source: ScanSource) {
   return source.kind === 'sample'
@@ -16,9 +16,7 @@ export function sourceIdentity(source: ScanSource) {
     : {
         name: repositoryName(source.scan.repositoryUrl),
         tag: source.scan.revision || 'default branch',
-        graphUrl: source.projectId
-          ? `/api/projects/${encodeURIComponent(source.projectId)}/graph`
-          : scanGraphUrl(source.scan.id),
+        graphUrl: `/api/projects/${encodeURIComponent(source.projectId)}/graph`,
         download: `${source.scan.id}.graph.json`,
       };
 }

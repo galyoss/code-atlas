@@ -15,9 +15,28 @@ import threading
 import time
 from pathlib import Path
 
-from scan_api.access import list_files
 from scan_api.workspace import Workspace, canonical_url
 from scan_api.workspace_sandbox import SandboxError, export_confined
+
+
+_MANIFEST_LIMIT = 20_000
+
+
+def list_files(checkout) -> dict | None:
+    """Tracked paths of the checkout, so the report can show the whole project tree."""
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(checkout), "ls-files", "-z"],
+            capture_output=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0:
+        return None
+    paths = sorted(path for path in completed.stdout.decode("utf-8", "replace").split("\0") if path)
+    return {"paths": paths[:_MANIFEST_LIMIT], "total": len(paths), "truncated": len(paths) > _MANIFEST_LIMIT}
 
 
 class BuildError(Exception):

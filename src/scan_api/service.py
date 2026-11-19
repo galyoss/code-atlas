@@ -6,23 +6,21 @@ import queue
 import shutil
 import threading
 import traceback
-from datetime import datetime, timezone
 from pathlib import Path
 
-from review.model import UnconfiguredModel, model_from_env
+from review.model import ChatCompletionsClient
 from review.runner import review_graph
 
 from scanner.joern_runner import INSTALL, JoernNotFound, find_home
 from scanner.scan import export_repository
 
-from scan_api.access import AccessError, Revision, clone_at, list_files, parse_github_url, resolve_revision
+from scan_api.access import AccessError, Revision, clone_at, parse_github_url, resolve_revision
 from scan_api.store import Store, new_scan_id
 
 _FIELDS = {"repositoryUrl", "revision", "model", "agentCount", "agreementThreshold"}
 _COMPLETE = "Every route has a full vote set."
 _INCOMPLETE = "Review did not finish a full vote set. The code graph is available."
 _REVIEW_FAILED = "Review failed before finishing. The code graph is available."
-_REVIEWING = "Reviewing routes."
 
 
 class ConfigError(Exception):
@@ -39,20 +37,15 @@ class ScanService:
         export=export_repository,
         joern_home=find_home,
         model_client=None,
-        manifest=list_files,
     ) -> None:
         self.store = store
         self._resolve = resolve
         self._clone = clone
         self._export = export
         self._joern_home = joern_home
-        self._manifest = manifest
-        self._model_client = model_client if model_client is not None else model_from_env()
+        self._model_client = model_client if model_client is not None else ChatCompletionsClient()
         self._queue: queue.Queue[str] = queue.Queue()
         self._thread: threading.Thread | None = None
-        # Jobs this process will still work on. A queued or running record outside
-        # this set was interrupted by a restart and will not progress.
-        self._pending: set[str] = set()
 
     def start(self) -> None:
         if self._thread is not None:
@@ -71,7 +64,6 @@ class ScanService:
         if self._joern_home() is None:
             return 503, _joern_missing(revision, request)
         job = self.store.create(_job(revision, request))
-        self._pending.add(job["id"])
         self._queue.put(job["id"])
         print(f"scan {job['id']} queued {job['repositoryUrl']}@{job['revision']}", flush=True)
         return 202, public_scan(job)
@@ -81,43 +73,6 @@ class ScanService:
         if job is None:
             return 404, {"error": "Scan not found."}
         return 200, public_scan(job)
-
-    def summary(self, scan_id: str) -> tuple[int, dict]:
-        job = self.store.summary(scan_id)
-        if job is None:
-            return 404, {"error": "Scan not found."}
-        return 200, self._summary(job)
-
-    def list(self) -> tuple[int, dict]:
-        jobs = sorted(self.store.summaries(), key=lambda job: job.get("createdAt") or "", reverse=True)
-        return 200, {"scans": [self._summary(job) for job in jobs]}
-
-    def review_status(self) -> tuple[int, dict]:
-        if isinstance(self._model_client, UnconfiguredModel):
-            return 200, {"configured": False, "detail": self._model_client.reason}
-        return 200, {"configured": True, "detail": "A model provider is configured for review."}
-
-    def _summary(self, job: dict) -> dict:
-        summary = public_scan(job)
-        del summary["graph"]
-        in_progress = job["id"] in self._pending
-        summary.update(
-            createdAt=job.get("createdAt"),
-            hasFiles=isinstance(job.get("files"), dict),
-            hasGraph=job["hasGraph"] and job["status"] in {"partial", "completed"},
-            inProgress=in_progress,
-            reviewing=in_progress and job["status"] == "partial" and job["progress"] == _REVIEWING,
-        )
-        return summary
-
-    def files(self, scan_id: str) -> tuple[int, dict]:
-        job = self.store.summary(scan_id)
-        if job is None:
-            return 404, {"error": "Scan not found."}
-        manifest = job.get("files")
-        if not isinstance(manifest, dict):
-            return 409, {"error": f"Scan {scan_id} has no file list. Status is {job['status']}."}
-        return 200, manifest
 
     def graph(self, scan_id: str) -> tuple[int, dict]:
         job = self.store.get(scan_id)
@@ -138,8 +93,6 @@ class ScanService:
         try:
             self.store.update(scan_id, status="running", progress="Cloning the repository.", error=None)
             self._clone(job["repositoryUrl"], job["resolvedRevision"], work)
-            # The tree is context for the report, so a failed listing never fails the scan.
-            self.store.update(scan_id, files=self._manifest(Path(work)))
             self.store.update(scan_id, progress="Running the FastAPI scanner.")
             document = self._export(Path(work))
             if not isinstance(document, dict) or document.get("schemaVersion") != "1.0.0":
@@ -165,7 +118,7 @@ class ScanService:
         self.store.update(
             scan_id,
             status="partial",
-            progress=_REVIEWING,
+            progress="Reviewing routes.",
             error=None,
             graph=document,
             votes=[],
@@ -222,7 +175,6 @@ class ScanService:
                         graph=None,
                     )
             finally:
-                self._pending.discard(scan_id)
                 self._queue.task_done()
 
 
@@ -293,7 +245,6 @@ def _integer(payload: dict, name: str, default: int) -> int:
 def _job(revision: Revision, request: dict) -> dict:
     return {
         "id": new_scan_id(),
-        "createdAt": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "status": "queued",
         "progress": "Queued.",
         "error": None,

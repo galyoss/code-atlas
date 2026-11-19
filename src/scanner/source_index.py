@@ -196,14 +196,6 @@ def _annotation(node: ast.AST | None) -> str:
     return ""
 
 
-def _sqlmodel_table(node: ast.ClassDef) -> bool:
-    """SQLModel marks mapped classes with `table=True` in the class keywords."""
-    return any(
-        keyword.arg == "table" and isinstance(keyword.value, ast.Constant) and keyword.value.value is True
-        for keyword in node.keywords
-    )
-
-
 def _is_orm(bases: list[str], tablename: str | None, columns: list[str]) -> bool:
     if tablename:
         return True
@@ -364,7 +356,7 @@ class _ModuleParser(ast.NodeVisitor):
             bases=bases,
             tablename=tablename,
             columns=col_names,
-            is_orm=_is_orm(bases, tablename, col_names) or _sqlmodel_table(node),
+            is_orm=_is_orm(bases, tablename, col_names),
         )
         self.classes.append(info)
         self._class_stack.append(node.name)
@@ -419,16 +411,11 @@ class SourceIndex:
                 return mod
         return None
 
-    def resolve_name(
-        self, module_qual: str, name: str, _seen: frozenset[tuple[str, str]] = frozenset()
-    ) -> tuple[str, str] | None:
+    def resolve_name(self, module_qual: str, name: str) -> tuple[str, str] | None:
         """Resolve ``name`` in ``module_qual`` to ``(kind, qualname)``.
 
-        kind is ``function``, ``class``, or ``external``. A re-export cycle between
-        modules leaves the name unresolved.
+        kind is ``function``, ``class``, or ``external``.
         """
-        if (module_qual, name) in _seen:
-            return None
         mod = self.modules.get(module_qual)
         if mod is None:
             return None
@@ -451,7 +438,7 @@ class SourceIndex:
         src_mod, src_name = imported
         target_name = src_name or head
         if src_mod in self.modules:
-            return self.resolve_name(src_mod, target_name, _seen | {(module_qual, name)})
+            return self.resolve_name(src_mod, target_name)
         return ("external", f"{src_mod}.{target_name}" if src_mod else target_name)
 
     def dependency_targets(self, module_qual: str, expr_or_name: str) -> list[str]:

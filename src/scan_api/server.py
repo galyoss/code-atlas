@@ -1,4 +1,4 @@
-"""FastAPI service for scan jobs. The Atlas frontend reaches it through a dev proxy."""
+"""FastAPI service for scan jobs. There is no frontend."""
 
 from __future__ import annotations
 
@@ -40,24 +40,8 @@ def create_app(service: ScanService | None = None) -> FastAPI:
     def root() -> dict:
         return {
             "service": "code-atlas-scan",
-            "endpoints": [
-                "GET /review",
-                "GET /scans",
-                "POST /scans",
-                "GET /scans/{id}",
-                "GET /scans/{id}/summary",
-                "GET /scans/{id}/files",
-                "GET /scans/{id}/graph",
-            ],
+            "endpoints": ["POST /scans", "GET /scans/{id}", "GET /scans/{id}/graph"],
         }
-
-    @app.get("/review")
-    def review() -> JSONResponse:
-        return _json(*scans.review_status())
-
-    @app.get("/scans")
-    def list_scans() -> JSONResponse:
-        return _json(*scans.list())
 
     @app.post("/scans")
     async def create_scan(request: Request) -> JSONResponse:
@@ -77,18 +61,6 @@ def create_app(service: ScanService | None = None) -> FastAPI:
         if _SCAN_ID.fullmatch(scan_id) is None:
             return _json(404, {"error": "Not found."})
         return _json(*scans.get(scan_id))
-
-    @app.get("/scans/{scan_id}/summary")
-    def get_summary(scan_id: str) -> JSONResponse:
-        if _SCAN_ID.fullmatch(scan_id) is None:
-            return _json(404, {"error": "Not found."})
-        return _json(*scans.summary(scan_id))
-
-    @app.get("/scans/{scan_id}/files")
-    def get_files(scan_id: str) -> JSONResponse:
-        if _SCAN_ID.fullmatch(scan_id) is None:
-            return _json(404, {"error": "Not found."})
-        return _json(*scans.files(scan_id))
 
     @app.get("/scans/{scan_id}/graph")
     def get_graph(scan_id: str) -> JSONResponse:

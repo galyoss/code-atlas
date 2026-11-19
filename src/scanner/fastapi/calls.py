@@ -5,7 +5,6 @@ The schema writer only sees `CallFact`. It does not resolve Python calls.
 
 from __future__ import annotations
 
-import builtins
 import re
 from dataclasses import dataclass, field
 
@@ -18,8 +17,6 @@ _AWAIT = re.compile(r"^\s*await\s+")
 _SELECT = re.compile(r"\b(select|query)\s*\(")
 _WRITE = re.compile(r"\b(update|delete|insert|pg_insert)\s*\(")
 _SESSION_WRITE = re.compile(r"\.(add|add_all|commit|flush|merge|delete)\s*\(")
-# A bare name the index cannot resolve is a builtin, not a runtime-computed target.
-_BUILTINS = frozenset(name for name in dir(builtins) if not name.startswith("_"))
 
 
 @dataclass
@@ -82,12 +79,7 @@ def _head(code: str) -> str:
 
 def _is_attribute(call: CallRec) -> bool:
     head = _head(call.code)
-    if re.search(r"\." + re.escape(call.name) + r"\s*$", head) is not None:
-        return True
-    # A chained call such as select(X).where(...) is a method on the previous result.
-    name = re.escape(call.name)
-    code = _AWAIT.sub("", (call.code or "").strip())
-    return re.match(name + r"\s*\(", code) is None and re.search(r"[)\]]\s*\.\s*" + name + r"\s*\(", code) is not None
+    return re.search(r"\." + re.escape(call.name) + r"\s*$", head) is not None
 
 
 def _symbol_for_function(index: SourceIndex, qual: str, symbols: dict[str, SymbolFact]) -> None:
@@ -141,8 +133,6 @@ def resolve_call(
     if not _is_attribute(call):
         resolved = index.resolve_name(module, call.name)
         if resolved is None:
-            if call.name in _BUILTINS:
-                return "external", None, None, f"builtins.{call.name}"
             return "ambiguous", None, [], call.name
         kind, qual = resolved
         if kind == "function":

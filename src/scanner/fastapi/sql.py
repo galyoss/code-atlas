@@ -22,8 +22,6 @@ from scanner.project import Project
 
 _MODEL_RE = re.compile(r"\b(select|query|update|delete)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)")
 _ADD_RE = re.compile(r"\.add\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)")
-# Session.get(Model, key): a primary-key load. The key is the whole predicate.
-_GET_RE = re.compile(r"\.get\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)\s*[,)]")
 _KWARG_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^,]+)")
 _FLOW_RE = re.compile(
     r"([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*==\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)"
@@ -51,59 +49,7 @@ def _from_call(project: Project, route: RouteFact, analysis: RouteAnalysis, node
         return _query_access(project, route, analysis, node, code)
     if node.callee_name == "add" and _ADD_RE.search(code):
         return _create_access(project, route, analysis, node, code)
-    if node.callee_name == "get" and _GET_RE.search(code):
-        return _get_access(project, route, analysis, node, code)
     return None
-
-
-def _get_access(project, route, analysis: RouteAnalysis, node, code: str) -> DataAccessFact | None:
-    match = _GET_RE.search(code)
-    cls = _class_for(project, analysis, match.group(1), node.file)
-    # Only a mapped class makes this a database load; dict.get(Key, ...) is not one.
-    if cls is None or not cls.is_orm:
-        return None
-    route.symbols.setdefault(
-        cls.qualname,
-        SymbolFact(
-            key=cls.qualname,
-            language="python",
-            kind="class",
-            name=cls.name,
-            qualname=cls.qualname,
-            signature=cls.signature[:300],
-            file=cls.file,
-            start=cls.line,
-            end=max(cls.end_line, cls.line),
-        ),
-    )
-    entry = {param.name for param in route.entry_params}
-    key = match.group(2)
-    flows = []
-    if key in entry:
-        flows.append(ParamFlowFact(key, f"{cls.name}.<primary key>", "exact"))
-    elif "." in key and key.split(".", 1)[1] in entry:
-        flows.append(ParamFlowFact(key.split(".", 1)[1], f"{cls.name}.<primary key>", "probable"))
-    snippet, snippet_end, truncated = _snippet_with_guard(project, node, code, "load")
-    return DataAccessFact(
-        key=f"da:{node.key}",
-        call_key=node.key,
-        operation="load",
-        persistence_api="orm",
-        object_name=cls.name,
-        object_symbol_key=cls.qualname,
-        store=cls.tablename,
-        param_flows=flows,
-        in_predicate="no",
-        stamped_on_write="not_applicable",
-        owner_fields=[],
-        identity_names=[],
-        written_fields=[],
-        snippet=snippet,
-        snippet_file=node.file,
-        snippet_start=node.line,
-        snippet_end=snippet_end,
-        snippet_truncated=truncated,
-    )
 
 
 def _query_access(project, route, analysis: RouteAnalysis, node, code: str) -> DataAccessFact | None:
@@ -133,11 +79,7 @@ def _query_access(project, route, analysis: RouteAnalysis, node, code: str) -> D
                 end=max(cls.end_line, cls.line),
             ),
         )
-    # A builder query can gain its owner filter in a later `stmt = stmt.where(...)`.
-    refinements = _refinements(project, node)
-    decision, owners, idents = predicate_from_cpg(
-        "\n".join([code, *(text for _start, _end, text in refinements)]), aliases
-    )
+    decision, owners, idents = predicate_from_cpg(code, aliases)
     if verb == "update":
         operation = "update"
         stamped, written = _update_stamp(code, analysis, route, owners)
@@ -152,10 +94,7 @@ def _query_access(project, route, analysis: RouteAnalysis, node, code: str) -> D
     if decision != "yes":
         owners = []
         idents = []
-    if refinements:
-        snippet, snippet_end, truncated = _snippet_with_refinements(project, code, refinements)
-    else:
-        snippet, snippet_end, truncated = _snippet_with_guard(project, node, code, operation)
+    snippet = clip_snippet(code, project.limits.max_snippet_chars)
     return DataAccessFact(
         key=f"da:{node.key}",
         call_key=node.key,
@@ -173,8 +112,8 @@ def _query_access(project, route, analysis: RouteAnalysis, node, code: str) -> D
         snippet=snippet,
         snippet_file=node.file,
         snippet_start=node.line,
-        snippet_end=snippet_end,
-        snippet_truncated=truncated,
+        snippet_end=node.line,
+        snippet_truncated=len(code) > project.limits.max_snippet_chars,
     )
 
 
@@ -440,91 +379,6 @@ def _create_flows(written: list[WrittenFieldFact], route: RouteFact) -> list[Par
 def _known_bindings(names: list[str], route: RouteFact) -> list[str]:
     have = {binding.name for binding in route.bindings}
     return [name for name in names if name in have]
-
-
-_GUARD_LINES = 4
-
-
-def _snippet_with_guard(project: Project, node, code: str, operation: str) -> tuple[str, int, bool]:
-    """A load's source line plus the lines after it in the same function.
-
-    An ownership check on a loaded object usually follows the load
-    (`if obj.user_id != user.id: raise`). The query text alone hides it.
-    """
-    limit = project.limits.max_snippet_chars
-    plain = (clip_snippet(code, limit), node.line, len(code) > limit)
-    if operation not in {"load", "query"}:
-        return plain
-    enclosing = [
-        method.end_line
-        for method in project.overlay.methods_by_file.get(node.file, [])
-        if method.line <= node.line <= method.end_line and not method.name.startswith("<")
-    ]
-    if not enclosing:
-        return plain
-    end = min(min(enclosing), node.line + _GUARD_LINES)
-    text, truncated = project.index.snippet(node.file, node.line, end, limit)
-    # The window must still show the access itself; otherwise keep the call text.
-    if not text or _first_token(code) not in text:
-        return plain
-    return text, end, truncated
-
-
-def _enclosing_end(project: Project, node) -> int | None:
-    ends = [
-        method.end_line
-        for method in project.overlay.methods_by_file.get(node.file, [])
-        if method.line <= node.line <= method.end_line and not method.name.startswith("<")
-    ]
-    return min(ends) if ends else None
-
-
-def _refinements(project: Project, node) -> list[tuple[int, int, str]]:
-    """Later statements in the same function that extend the query assigned at this access."""
-    end = _enclosing_end(project, node)
-    lines = project.index.file_text.get(node.file, "").splitlines()
-    if end is None or not lines:
-        return []
-    variable = None
-    # The call may sit inside a multi-line `stmt = (` expression that starts a few lines up.
-    for line_no in range(node.line, max(node.line - 4, 1) - 1, -1):
-        match = re.match(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)", lines[line_no - 1] if line_no <= len(lines) else "")
-        if match:
-            variable = match.group(1)
-            break
-    if variable is None:
-        return []
-    found = []
-    pattern = re.compile(rf"\s*{re.escape(variable)}\s*=\s*{re.escape(variable)}\s*\.")
-    index = node.line
-    while index < min(end, len(lines)):
-        if pattern.match(lines[index]):
-            text, last = lines[index], index
-            while text.count("(") > text.count(")") and last + 1 < min(end, len(lines)):
-                last += 1
-                text += "\n" + lines[last]
-            found.append((index + 1, last + 1, text.strip()))
-            index = last
-        index += 1
-    return found
-
-
-def _snippet_with_refinements(
-    project: Project, code: str, refinements: list[tuple[int, int, str]]
-) -> tuple[str, int, bool]:
-    """The query text and the statements that refine it, joined by an elision marker."""
-    limit = project.limits.max_snippet_chars
-    tail = "\n".join(text for _start, _end, text in refinements)
-    head_room = max(limit - len(tail) - 6, 80)
-    head = clip_snippet(code, head_room)
-    text = f"{head}\n...\n{tail}"
-    truncated = len(code) > head_room or len(text) > limit
-    return text[:limit], refinements[-1][1], truncated
-
-
-def _first_token(code: str) -> str:
-    match = re.search(r"[A-Za-z_][A-Za-z0-9_]*\s*\(", code)
-    return match.group(0).rstrip("( \t") if match else code.strip()[:20]
 
 
 def clip_snippet(text: str, limit: int) -> str:

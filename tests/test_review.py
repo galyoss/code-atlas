@@ -1,14 +1,12 @@
 """IDOR review with a fake model. No live model and no repository checkout."""
 
 import json
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import socket
 from pathlib import Path
-from threading import Barrier, Thread
 
-import pytest
 from fastapi.testclient import TestClient
 
-from review import model as review_model
+from review.model import ChatCompletionsClient
 from review.registry import registered_checks
 from review.runner import review_graph
 from scan_api.access import Revision
@@ -65,7 +63,7 @@ def _run(tmp_path, document, client, **overrides):
         clone=clone,
         export=export,
         joern_home=lambda: Path("/opt/joern"),
-        model_client=_AfterCheckout() if client is not None else None,
+        model_client=_AfterCheckout(),
     )
     status, created = service.create(_body(**overrides))
     assert status == 202
@@ -83,11 +81,7 @@ def _route(route_id="route_item", *, coverage="complete", snippet="return Item.g
         "ownershipEvidence": {"inPredicate": "no", "stampedOnWrite": "not_applicable"},
     }
     if snippet is not None:
-        access["snippet"] = {
-            "text": snippet,
-            "truncated": False,
-            "range": {"file": "item.py", "startLine": 4, "endLine": 4},
-        }
+        access["snippet"] = {"text": snippet, "truncated": False}
     return {
         "id": route_id,
         "authChain": [
@@ -113,11 +107,8 @@ def _document(route):
     }
 
 
-def _reply(route_id, verdict, reason, *, data_access_id=None):
-    payload = {"routeId": route_id, "verdict": verdict, "reason": reason}
-    if data_access_id is not None:
-        payload["dataAccessId"] = data_access_id
-    return json.dumps(payload)
+def _reply(route_id, verdict, reason):
+    return json.dumps({"routeId": route_id, "verdict": verdict, "reason": reason})
 
 
 def test_only_idor_is_registered_and_the_runner_does_not_name_it():
@@ -167,9 +158,7 @@ def test_synthetic_load_by_id_agrees_once(tmp_path):
         else:
             raise AssertionError("unexpected prompt")
         if route_id == "route_post_thread_runs":
-            return _reply(
-                route_id, "present", f"{role} names app/api/runs.py:15", data_access_id="da_load_thread"
-            )
+            return _reply(route_id, "present", f"{role} names app/api/runs.py:15")
         return _reply(route_id, "absent", f"{role} sees the owner filter at app/api/threads.py:14")
 
     model = FakeModel(decide)
@@ -181,29 +170,23 @@ def test_synthetic_load_by_id_agrees_once(tmp_path):
         "id",
         "check",
         "routeId",
-        "dataAccessId",
-        "evidence",
         "agreementThreshold",
         "presentCount",
         "voteIds",
-        "routeCoverage",
     }
-    assert finding["routeCoverage"] == document["routes"][0]["budget"]["coverage"]
     assert finding["check"] == "idor"
     assert finding["routeId"] == "route_post_thread_runs"
-    assert finding["dataAccessId"] == "da_load_thread"
-    assert finding["evidence"] == document["routes"][0]["dataAccesses"][0]["snippet"]
     assert finding["agreementThreshold"] == 2
     assert finding["presentCount"] == 2
     votes = {vote["id"]: vote for vote in job["votes"]}
     agreed = [votes[vote_id] for vote_id in finding["voteIds"]]
     assert [vote["role"] for vote in agreed] == ["hunter", "skeptic"]
     assert {vote["verdict"] for vote in agreed} == {"present"}
-    assert {vote["dataAccessId"] for vote in agreed} == {"da_load_thread"}
     assert {vote["reason"] for vote in agreed} == {
         "hunter names app/api/runs.py:15",
         "skeptic names app/api/runs.py:15",
     }
+    assert "app/api/runs.py" not in json.dumps(finding)
     get_votes = [vote for vote in job["votes"] if vote["routeId"] == "route_get_thread"]
     assert [vote["verdict"] for vote in get_votes] == ["absent", "absent"]
     assert all(vote["id"] not in finding["voteIds"] for vote in get_votes)
@@ -214,10 +197,7 @@ def test_synthetic_load_by_id_agrees_once(tmp_path):
         if json.loads(call["user"])["route"]["id"] == "route_post_thread_runs"
     ]
     assert post_calls
-    for context in post_calls:
-        assert next(iter(context)) == "targetRouteId"
-        assert context["targetRouteId"] == context["route"]["id"] == "route_post_thread_runs"
-        assert [item["id"] for item in context["neighborRoutes"]] == ["route_get_thread"]
+    assert [item["id"] for item in post_calls[0]["neighborRoutes"]] == ["route_get_thread"]
     names = {item["id"] for item in post_calls[0]["symbolIndex"]}
     assert {"sym_thread", "sym_get_current_user", "sym_get_thread"} <= names
 
@@ -234,44 +214,6 @@ def test_synthetic_load_by_id_agrees_once(tmp_path):
     assert "findings" not in graph.json()
 
 
-def test_present_votes_for_distinct_accesses_do_not_agree():
-    document = json.loads(EXAMPLE.read_text(encoding="utf-8"))
-
-    def decide(model, system, user):
-        route = json.loads(user)["route"]
-        if route["id"] == "route_get_thread":
-            return _reply(route["id"], "absent", "Protected load")
-        access_id = "da_load_thread" if system == CHECK.hunter_prompt else "da_create_run"
-        return _reply(route["id"], "present", "Cited access", data_access_id=access_id)
-
-    result = review_graph(
-        document, model="reviewer", agent_count=2, agreement_threshold=2, client=FakeModel(decide)
-    )
-    assert result.complete is True
-    assert result.findings == []
-    assert {vote["dataAccessId"] for vote in result.votes if vote["verdict"] == "present"} == {
-        "da_load_thread", "da_create_run"
-    }
-
-
-@pytest.mark.parametrize("access_id", [None, "da_get_thread", ["da_load_thread"]])
-def test_present_without_a_local_access_is_an_invalid_vote(access_id):
-    document = json.loads(EXAMPLE.read_text(encoding="utf-8"))
-
-    def decide(model, system, user):
-        route_id = json.loads(user)["route"]["id"]
-        if route_id == "route_get_thread":
-            return _reply(route_id, "absent", "Protected load")
-        return _reply(route_id, "present", "Unverified citation", data_access_id=access_id)
-
-    result = review_graph(
-        document, model="reviewer", agent_count=1, agreement_threshold=1, client=FakeModel(decide)
-    )
-    assert result.complete is False
-    assert result.findings == []
-    assert [vote["verdict"] for vote in result.votes] == ["inconclusive", "absent"]
-
-
 def test_present_below_threshold_keeps_votes_and_writes_no_finding(tmp_path):
     verdicts = ["present", "inconclusive", "inconclusive"]
     seen = {"n": 0}
@@ -280,7 +222,7 @@ def test_present_below_threshold_keeps_votes_and_writes_no_finding(tmp_path):
         route_id = json.loads(user)["route"]["id"]
         verdict = verdicts[seen["n"]]
         seen["n"] += 1
-        return _reply(route_id, verdict, f"scripted {verdict}", data_access_id="da_load")
+        return _reply(route_id, verdict, f"scripted {verdict}")
 
     _, job = _run(
         tmp_path,
@@ -300,48 +242,41 @@ def test_present_below_threshold_keeps_votes_and_writes_no_finding(tmp_path):
     ]
 
 
-def test_present_on_a_partial_route_stands_when_the_cited_path_is_resolved(tmp_path):
+def test_present_on_a_partial_slice_is_stored_inconclusive(tmp_path):
     document = json.loads(AEGRA.read_text(encoding="utf-8"))
     for route in document["routes"]:
-        assert set(route["budget"]["coverage"].values()) == {"partial"}
+        coverage = route["budget"]["coverage"]
+        assert coverage["authChain"] == "partial"
+        assert coverage["callGraph"] == "partial"
+        assert coverage["dataFlow"] == "partial"
 
     def decide(model, system, user):
-        route = json.loads(user)["route"]
-        return _reply(
-            route["id"],
-            "present",
-            "The model claims a missing owner check.",
-            data_access_id=route["dataAccesses"][0]["id"],
-        )
+        route_id = json.loads(user)["route"]["id"]
+        return _reply(route_id, "present", "The model claims a missing owner check.")
 
     model = FakeModel(decide)
     _, job = _run(tmp_path, document, model)
     assert job["status"] == "completed"
+    assert job["findings"] == []
     assert len(model.calls) == 4
-    assert {vote["verdict"] for vote in job["votes"]} == {"present"}
-    assert {finding["routeId"] for finding in job["findings"]} == {route["id"] for route in document["routes"]}
-    for finding in job["findings"]:
-        assert set(finding["routeCoverage"].values()) == {"partial"}
+    assert {vote["verdict"] for vote in job["votes"]} == {"inconclusive"}
+    assert {vote["reason"] for vote in job["votes"]} == {
+        "Slice coverage is not complete, so a present vote is inconclusive."
+    }
 
 
-@pytest.mark.parametrize("omit_range", [False, True])
-def test_missing_source_evidence_blocks_a_present_vote(tmp_path, omit_range):
+def test_missing_snippet_blocks_a_present_vote(tmp_path):
     def decide(model, system, user):
         route_id = json.loads(user)["route"]["id"]
-        return _reply(route_id, "present", "Looks missing.", data_access_id="da_load")
+        return _reply(route_id, "present", "Looks missing.")
 
-    if omit_range:
-        route = _route()
-        del route["dataAccesses"][0]["snippet"]["range"]
-        reason = "The cited data access has no source snippet with a range."
-    else:
-        route = _route(snippet=None)
-        reason = "A data-access snippet this check needs is missing."
-    _, job = _run(tmp_path, _document(route), FakeModel(decide))
+    _, job = _run(tmp_path, _document(_route(snippet=None)), FakeModel(decide))
     assert job["status"] == "completed"
     assert job["findings"] == []
     assert [vote["verdict"] for vote in job["votes"]] == ["inconclusive", "inconclusive"]
-    assert {vote["reason"] for vote in job["votes"]} == {reason}
+    assert {vote["reason"] for vote in job["votes"]} == {
+        "A data-access snippet this check needs is missing."
+    }
 
 
 def test_failed_calls_stay_partial_and_do_not_invent_a_finding(tmp_path):
@@ -375,72 +310,27 @@ def test_failed_calls_stay_partial_and_do_not_invent_a_finding(tmp_path):
     assert [vote["verdict"] for vote in job["votes"]] == ["inconclusive"] * 4
     assert [vote["routeId"] for vote in job["votes"]] == [route_id] * 4
     assert [vote["reason"] for vote in job["votes"]] == [
-        "The review call timed out.",
+        "timed out",
         "The model did not return JSON.",
         "The vote named a different route.",
         "The vote used an unknown verdict.",
     ]
 
 
-@pytest.mark.parametrize(
-    "reason_fields",
-    [{}, {"reason": ["not text"]}, {"reason": "escaped lone surrogate \ud800"}],
-    ids=["missing", "non-string", "lone-surrogate"],
-)
-def test_invalid_vote_reason_preserves_results_in_scan_api(tmp_path, reason_fields):
-    def decide(model, system, user):
-        route_id = json.loads(user)["route"]["id"]
-        if system == CHECK.skeptic_prompt:
-            return json.dumps({
-                "routeId": route_id,
-                "verdict": "present",
-                "dataAccessId": "da_load",
-                **reason_fields,
-            })
-        return _reply(route_id, "present", "Cited load by ID", data_access_id="da_load")
-
-    service, job = _run(
-        tmp_path, _document(_route()), FakeModel(decide), agentCount=3, agreementThreshold=2
-    )
-    response = TestClient(create_app(service)).get(f"/scans/{job['id']}")
-    assert response.status_code == 200
-    scan = response.json()
-    assert scan["status"] == "partial"
-    assert scan["graph"] == job["graph"]
-    assert [vote["verdict"] for vote in scan["votes"]] == ["present", "inconclusive", "present"]
-    assert scan["votes"][1]["reason"] == "The vote did not include a valid text reason."
-    assert len(scan["findings"]) == 1
-    assert scan["findings"][0]["voteIds"] == [scan["votes"][0]["id"], scan["votes"][2]["id"]]
-
-
 def test_agreement_is_kept_when_another_call_fails(tmp_path):
     seen = {"n": 0}
-    first_calls = Barrier(2, timeout=5)
-    other_hunter_called = False
 
     def decide(model, system, user):
-        nonlocal other_hunter_called
-        route_id = json.loads(user)["route"]["id"]
-        if route_id == "route_other":
-            if system == CHECK.skeptic_prompt:
-                return _reply(route_id, "absent", "No object access")
-            if not other_hunter_called:
-                other_hunter_called = True
-                first_calls.wait()
-            raise TimeoutError("timed out")
         kind = seen["n"]
         seen["n"] += 1
-        if kind == 0:
-            first_calls.wait()
+        route_id = json.loads(user)["route"]["id"]
         if kind == 2:
             raise TimeoutError("timed out")
-        return _reply(route_id, "present", f"vote {kind} at item.py:4", data_access_id="da_load")
+        return _reply(route_id, "present", f"vote {kind} at item.py:4")
 
-    document = _document(_route())
-    document["routes"].append(_route("route_other"))
     _, job = _run(
         tmp_path,
-        document,
+        _document(_route()),
         FakeModel(decide),
         agentCount=3,
         agreementThreshold=2,
@@ -453,21 +343,22 @@ def test_agreement_is_kept_when_another_call_fails(tmp_path):
     assert finding["presentCount"] == 2
     assert finding["agreementThreshold"] == 2
     assert len(finding["voteIds"]) == 2
-    assert finding["evidence"]["range"]["file"] == "item.py"
+    assert "item.py" not in json.dumps(finding)
     votes = {vote["id"]: vote for vote in job["votes"]}
     assert [votes[vote_id]["verdict"] for vote_id in finding["voteIds"]] == ["present", "present"]
-    assert [vote["verdict"] for vote in job["votes"] if vote["routeId"] == "route_item"] == [
-        "present", "present", "inconclusive"
-    ]
-    assert [vote["verdict"] for vote in job["votes"] if vote["routeId"] == "route_other"] == [
-        "inconclusive", "absent", "inconclusive"
-    ]
-    assert first_calls.broken is False
+    assert [vote["verdict"] for vote in job["votes"]] == ["present", "present", "inconclusive"]
 
 
-def test_unconfigured_model_keeps_the_graph_partial(tmp_path, monkeypatch):
-    for name in ("OPENAI_API_KEY", "CODEATLAS_LLM_BASE_URL", "CODEATLAS_LLM_API_KEY"):
-        monkeypatch.delenv(name, raising=False)
+def test_missing_model_key_stores_inconclusive_and_does_not_open_a_socket(tmp_path, monkeypatch):
+    monkeypatch.delenv("REVIEW_MODEL_API_KEY", raising=False)
+    opened = {"n": 0}
+
+    def refuse(*args, **kwargs):
+        opened["n"] += 1
+        raise AssertionError("socket opened")
+
+    monkeypatch.setattr(socket, "socket", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
 
     def resolve(url, revision):
         return Revision("https://github.com/acme/app", "acme", "app", "main", SHA)
@@ -490,94 +381,82 @@ def test_unconfigured_model_keeps_the_graph_partial(tmp_path, monkeypatch):
     _, created = service.create(_body(model="reviewer"))
     service.execute(created["id"])
     _, job = service.get(created["id"])
+    assert opened["n"] == 0
     assert job["status"] == "partial"
+    assert job["error"] is None
     assert job["findings"] == []
+    assert job["graph"] == document
     assert job["graph"]["schemaVersion"] == "1.0.0"
-    assert {vote["verdict"] for vote in job["votes"]} == {"inconclusive"}
-    assert all("No model provider is configured" in vote["reason"] for vote in job["votes"])
+    assert [vote["verdict"] for vote in job["votes"]] == ["inconclusive", "inconclusive"]
+    assert {vote["reason"] for vote in job["votes"]} == {"The model key is not configured."}
 
 
-def test_default_service_uses_configured_chat_completions(tmp_path, monkeypatch):
-    requests = []
-    document = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+class _Body:
+    def __init__(self, payload: dict):
+        self._raw = json.dumps(payload).encode("utf-8")
 
-    class Provider(BaseHTTPRequestHandler):
-        def do_POST(self):
-            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-            requests.append((self.path, self.headers["Authorization"], body))
-            system, user = [message["content"] for message in body["messages"]]
-            route_id = json.loads(user)["route"]["id"]
-            status = 200
-            if route_id == "route_post_thread_runs":
-                text = _reply(route_id, "present", "Thread load lacks ownership", data_access_id="da_load_thread")
-                payload = {"choices": [{"message": {"content": f"```json\n{text}\n```"}}]}
-            elif system == CHECK.hunter_prompt:
-                text = _reply(route_id, "absent", "Route filters by owner")
-                payload = {"choices": [{"message": {"content": f"Extra text\n```json\n{text}\n```"}}]}
-            else:
-                status = 401
-                payload = {"error": "Provider diagnostic exposing local-test-key"}
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(payload).encode())
+    def read(self) -> bytes:
+        return self._raw
 
-        def log_message(self, *_args):
-            pass
+    def __enter__(self):
+        return self
 
-    with ThreadingHTTPServer(("127.0.0.1", 0), Provider) as server:
-        worker = Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
-        worker.start()
-        base_url = f"http://127.0.0.1:{server.server_port}"
-        monkeypatch.setenv("CODEATLAS_LLM_BASE_URL", f"{base_url}/v1/")
-        monkeypatch.setenv("OPENAI_API_KEY", "official-test-key")
-        monkeypatch.setattr(review_model, "_OPENAI_BASE_URL", f"{base_url}/official-test")
-        monkeypatch.delenv("CODEATLAS_LLM_API_KEY", raising=False)
-        try:
-            _, unconfigured = _run(tmp_path / "unconfigured", document, client=None)
-            assert unconfigured["status"] == "partial"
-            assert requests == []
-
-            monkeypatch.setenv("CODEATLAS_LLM_API_KEY", "local-test-key")
-            _, job = _run(tmp_path / "configured", document, client=None)
-        finally:
-            server.shutdown()
-            worker.join()
-
-    assert len(requests) == 4
-    for path, authorization, body in requests:
-        assert path == "/v1/chat/completions"
-        assert authorization == "Bearer local-test-key"
-        assert body["model"] == "reviewer"
-        assert body["response_format"] == {"type": "json_object"}
-        assert [message["role"] for message in body["messages"]] == ["system", "user"]
-    assert job["status"] == "partial"
-    assert [finding["dataAccessId"] for finding in job["findings"]] == ["da_load_thread"]
-    assert [vote["reason"] for vote in job["votes"] if vote["verdict"] == "inconclusive"] == [
-        "The model did not return JSON.",
-        "The model provider returned HTTP 401.",
-    ]
-    assert "local-test-key" not in json.dumps(job)
+    def __exit__(self, *args):
+        return False
 
 
-def test_cleartext_remote_provider_is_rejected_before_a_request(monkeypatch):
-    async def unexpected_request(*args, **kwargs):
-        pytest.fail("The remote HTTP endpoint reached the request path.")
+def test_chat_client_sends_the_model_name_and_returns_the_message(monkeypatch):
+    monkeypatch.delenv("REVIEW_MODEL_BASE_URL", raising=False)
+    seen = {}
 
-    monkeypatch.setattr(review_model.ChatCompletionsModel, "_request", unexpected_request)
-    monkeypatch.setenv("CODEATLAS_LLM_BASE_URL", "http://provider.example/v1")
-    monkeypatch.setenv("CODEATLAS_LLM_API_KEY", "custom-test-key")
-    monkeypatch.setenv("OPENAI_API_KEY", "official-test-key")
+    def urlopen(request, timeout):
+        seen["url"] = request.full_url
+        seen["timeout"] = timeout
+        seen["auth"] = request.get_header("Authorization")
+        seen["body"] = json.loads(request.data.decode("utf-8"))
+        return _Body(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"routeId":"route_item","verdict":"absent","reason":"tied"}',
+                        }
+                    }
+                ]
+            }
+        )
 
-    client = review_model.model_from_env()
-    with pytest.raises(review_model.ModelError, match="CODEATLAS_LLM_BASE_URL is invalid"):
-        client.complete(model="reviewer", system="Return JSON", user="{}")
+    client = ChatCompletionsClient(api_key="test-key", urlopen=urlopen)
+    text = client.complete(model="reviewer", system="hunter prompt", user="route json")
+    assert text == '{"routeId":"route_item","verdict":"absent","reason":"tied"}'
+    assert seen["url"] == "https://api.openai.com/v1/chat/completions"
+    assert seen["timeout"] == 60
+    assert seen["auth"] == "Bearer test-key"
+    assert seen["body"] == {
+        "model": "reviewer",
+        "messages": [
+            {"role": "system", "content": "hunter prompt"},
+            {"role": "user", "content": "route json"},
+        ],
+    }
+
+    def custom(request, timeout):
+        seen["custom_url"] = request.full_url
+        return _Body({"choices": [{"message": {"content": "{\"routeId\":\"r\",\"verdict\":\"absent\",\"reason\":\"ok\"}"}}]})
+
+    other = ChatCompletionsClient(
+        base_url="https://models.example.test/v1/",
+        api_key="test-key",
+        urlopen=custom,
+    )
+    assert other.complete(model="other-model", system="s", user="u").startswith("{")
+    assert seen["custom_url"] == "https://models.example.test/v1/chat/completions"
 
 
 def test_unknown_coverage_blocks_present():
     def decide(model, system, user):
         route_id = json.loads(user)["route"]["id"]
-        return _reply(route_id, "present", "claimed", data_access_id="da_load")
+        return _reply(route_id, "present", "claimed")
 
     result = review_graph(
         _document(_route(coverage="unknown")),
@@ -621,78 +500,3 @@ def test_a_second_check_is_another_pass():
     assert [finding["check"] for finding in result.findings] == ["alpha", "beta"]
     assert [finding["presentCount"] for finding in result.findings] == [1, 1]
     assert all("reason" not in finding for finding in result.findings)
-
-
-def _partial_route_with_path(path_resolution: str) -> dict:
-    route = _route(coverage="partial")
-    route["dataAccesses"][0]["callId"] = "call_load"
-    route["callGraph"] = [
-        {
-            "id": "call_service",
-            "calleeName": "load_item",
-            "resolution": path_resolution,
-            "children": [{"id": "call_load", "calleeName": "get", "resolution": "external", "children": []}],
-        },
-        {"id": "call_other", "calleeName": "handler", "resolution": "ambiguous", "children": []},
-    ]
-    return route
-
-
-@pytest.mark.parametrize("path_resolution, stands", [("resolved", True), ("ambiguous", False)])
-def test_partial_route_present_stands_only_on_a_resolved_cited_path(path_resolution, stands):
-    def decide(model, system, user):
-        route_id = json.loads(user)["route"]["id"]
-        return _reply(route_id, "present", "No owner check before the load.", data_access_id="da_load")
-
-    result = review_graph(
-        _document(_partial_route_with_path(path_resolution)),
-        model="reviewer",
-        agent_count=2,
-        agreement_threshold=2,
-        client=FakeModel(decide),
-    )
-    if stands:
-        assert len(result.findings) == 1
-        assert result.findings[0]["routeCoverage"]["callGraph"] == "partial"
-    else:
-        assert result.findings == []
-        assert {vote["reason"] for vote in result.votes} == {
-            "The recorded path to the cited access passes through an unresolved call, so a present vote is inconclusive."
-        }
-
-
-def test_neighbor_routes_are_summaries_without_code():
-    from review.runner import route_context
-
-    route = _route("route_a")
-    other = _route("route_b")
-    route["relatedRoutes"] = [{"routeId": "route_b"}]
-    other["handler"] = {"symbolId": "sym_b", "qualifiedName": "app.b", "range": {"file": "b.py"}}
-    neighbors, _ = route_context({"routes": [route, other], "symbolIndex": []}, route)
-    assert neighbors == [
-        {
-            "id": "route_b",
-            "handler": {"symbolId": "sym_b", "qualifiedName": "app.b"},
-            "dataAccesses": [
-                {"id": "da_load", "ownershipEvidence": {"inPredicate": "no", "stampedOnWrite": "not_applicable"}}
-            ],
-        }
-    ]
-
-
-def test_a_present_vote_without_a_citation_gets_one_correction():
-    answers = iter(
-        [
-            json.dumps({"routeId": "route_item", "verdict": "present", "reason": "No owner check."}),
-            _reply("route_item", "present", "No owner check.", data_access_id="da_load"),
-        ]
-    )
-    model = FakeModel(lambda model, system, user: next(answers))
-    result = review_graph(
-        _document(_route()), model="reviewer", agent_count=1, agreement_threshold=1, client=model
-    )
-    assert len(model.calls) == 2
-    assert "A present vote must name a dataAccessId." in model.calls[1]["user"]
-    assert result.votes[0]["verdict"] == "present"
-    assert result.votes[0]["dataAccessId"] == "da_load"
-    assert len(result.findings) == 1

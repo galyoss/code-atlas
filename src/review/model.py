@@ -1,19 +1,20 @@
-"""Model completions for code review."""
+"""Transport one review prompt to an OpenAI-compatible chat completions API.
+
+The check owns the hunter and skeptic prompts. This client sends them and
+returns the assistant text, which is the vote JSON. It does not decide a verdict.
+"""
 
 from __future__ import annotations
 
-import asyncio
+import json
 import os
+import urllib.error
+import urllib.request
 from typing import Protocol
 
-import httpx
-
-_OPENAI_BASE_URL = "https://api.openai.com/v1"
-_TIMEOUT_SECONDS = 60.0
-
-
-class ModelError(Exception):
-    """A model failure with a reason safe to expose on a scan."""
+_DEFAULT_BASE_URL = "https://api.openai.com/v1"
+_KEY_REASON = "The model key is not configured."
+_TIMEOUT = 60
 
 
 class ModelClient(Protocol):
@@ -21,82 +22,113 @@ class ModelClient(Protocol):
         """Return one completion. Raise TimeoutError when the call does not finish."""
 
 
-class UnconfiguredModel:
-    """Fail closed so a scan cannot invent a vote without a model."""
-
-    def __init__(self, reason: str = "No model provider is configured.") -> None:
-        self.reason = reason
-
-    def complete(self, *, model: str, system: str, user: str) -> str:
-        raise ModelError(self.reason)
+class ModelKeyMissing(Exception):
+    """REVIEW_MODEL_API_KEY is absent. No request was sent."""
 
 
-class ChatCompletionsModel:
-    """Send independent, non-streaming Chat Completions in JSON mode."""
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
-    def __init__(self, *, base_url: str, api_key: str, timeout: float = _TIMEOUT_SECONDS) -> None:
-        url = httpx.URL(base_url)
-        if url.scheme not in {"http", "https"} or not url.host or url.userinfo or url.query or url.fragment:
-            raise httpx.InvalidURL("Expected an HTTP(S) base URL without credentials, a query or a fragment.")
-        if url.scheme == "http" and url.host not in {"127.0.0.1", "::1", "localhost"}:
-            raise httpx.InvalidURL("Remote model providers require HTTPS.")
-        self._endpoint = url.copy_with(raw_path=url.raw_path.rstrip(b"/") + b"/chat/completions")
+
+def _opener() -> urllib.request.OpenerDirector:
+    return urllib.request.build_opener(_NoRedirect)
+
+
+class ChatCompletionsClient:
+    """Send the scan's model name to a chat completions endpoint.
+
+    `base_url` and `api_key` default to REVIEW_MODEL_BASE_URL and
+    REVIEW_MODEL_API_KEY. A missing key raises ModelKeyMissing before any
+    network call. The key is never included in an error message.
+    """
+
+    def __init__(
+        self,
+        *,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        timeout: float = _TIMEOUT,
+        urlopen=None,
+    ) -> None:
+        self._base_url = base_url
         self._api_key = api_key
         self._timeout = timeout
+        self._urlopen = urlopen
 
     def complete(self, *, model: str, system: str, user: str) -> str:
+        key = _secret(self._api_key, "REVIEW_MODEL_API_KEY")
+        if not key:
+            raise ModelKeyMissing(_KEY_REASON)
+        url = _base(self._base_url) + "/chat/completions"
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": "Bearer " + key,
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
         try:
-            response = asyncio.run(self._request(model=model, system=system, user=user))
-        except (TimeoutError, httpx.TimeoutException):
+            if self._urlopen is not None:
+                response = self._urlopen(request, timeout=self._timeout)
+            else:
+                response = _opener().open(request, timeout=self._timeout)
+            with response:
+                raw = response.read()
+        except TimeoutError:
             raise TimeoutError("The review call timed out.") from None
-        except (httpx.HTTPError, ValueError):
-            raise ModelError("The model provider request failed.") from None
-
-        if not response.is_success:
-            raise ModelError(f"The model provider returned HTTP {response.status_code}.")
-        try:
-            payload = response.json()
-        except ValueError:
-            raise ModelError("The model provider did not return JSON.") from None
-        choices = payload.get("choices") if isinstance(payload, dict) else None
-        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
-            raise ModelError("The model provider did not return a completion.")
-        choice = choices[0]
-        message = choice.get("message")
-        content = message.get("content") if isinstance(message, dict) else None
-        if choice.get("finish_reason", "stop") != "stop" or not isinstance(content, str) or not content.strip():
-            raise ModelError("The model provider did not return a complete text response.")
-        return content
-
-    async def _request(self, *, model: str, system: str, user: str) -> httpx.Response:
-        async with asyncio.timeout(self._timeout):
-            async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False, trust_env=False) as client:
-                return await client.post(
-                    self._endpoint,
-                    headers={"Authorization": f"Bearer {self._api_key}"},
-                    json={
-                        "model": model,
-                        "messages": [
-                            {"role": "system", "content": system},
-                            {"role": "user", "content": user},
-                        ],
-                        "response_format": {"type": "json_object"},
-                    },
-                )
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(f"The review call failed ({exc.code}).") from None
+        except urllib.error.URLError as exc:
+            if isinstance(exc.reason, TimeoutError):
+                raise TimeoutError("The review call timed out.") from None
+            raise RuntimeError("The review call failed.") from None
+        return _message_text(raw)
 
 
-def model_from_env() -> ModelClient:
-    base_url = os.environ.get("CODEATLAS_LLM_BASE_URL", "").strip()
-    if base_url:
-        api_key = os.environ.get("CODEATLAS_LLM_API_KEY", "").strip()
-        if not api_key:
-            return UnconfiguredModel("No model provider is configured. Set CODEATLAS_LLM_API_KEY for the custom URL.")
+def _secret(explicit: str | None, env_name: str) -> str:
+    if explicit is None:
+        value = os.environ.get(env_name, "")
     else:
-        base_url = _OPENAI_BASE_URL
-        api_key = os.environ.get("OPENAI_API_KEY", "").strip()
-        if not api_key:
-            return UnconfiguredModel()
+        value = explicit
+    if not isinstance(value, str):
+        return ""
+    return value.strip()
+
+
+def _base(explicit: str | None) -> str:
+    if explicit is None:
+        value = os.environ.get("REVIEW_MODEL_BASE_URL", "")
+    else:
+        value = explicit
+    if not isinstance(value, str) or not value.strip():
+        value = _DEFAULT_BASE_URL
+    return value.strip().rstrip("/")
+
+
+def _message_text(raw: bytes) -> str:
     try:
-        return ChatCompletionsModel(base_url=base_url, api_key=api_key)
-    except httpx.InvalidURL:
-        return UnconfiguredModel("No model provider is configured. CODEATLAS_LLM_BASE_URL is invalid.")
+        body = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise RuntimeError("The model did not return JSON.") from None
+    if not isinstance(body, dict):
+        raise RuntimeError("The model did not return JSON.")
+    choices = body.get("choices")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        raise RuntimeError("The model response had no message.")
+    message = choices[0].get("message")
+    if not isinstance(message, dict):
+        raise RuntimeError("The model response had no message.")
+    content = message.get("content")
+    if not isinstance(content, str) or not content.strip():
+        raise RuntimeError("The model response had no message.")
+    return content
