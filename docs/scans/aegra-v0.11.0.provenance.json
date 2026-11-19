@@ -1,0 +1,37 @@
+{
+  "repository": "https://github.com/aegra/aegra",
+  "tag": "v0.11.0",
+  "sourceRevision": "46055c0b9adffe51fb168974f79dfadaa6edd612",
+  "scannerRevision": "0d3fec1748d8c7e2321c130a3251bba041322515",
+  "generatedAt": "2026-11-16T14:21:20Z",
+  "joernVersion": "4.0.684",
+  "javaVersion": "Temurin 21.0.13+9",
+  "pythonVersion": "3.11.13",
+  "sha256": "c480d2ea15034d86d163101054d0714230ef9f5e79b94918b535431ad072737e",
+  "bytes": 5616397,
+  "command": [
+    "/Users/galyossipov/code/code-atlas/.venv/bin/export-fastapi",
+    "/private/tmp/export-fastapi-aegra-46055c0",
+    "-o",
+    "/Users/galyossipov/code/code-atlas-atlas-frontend/.work/atlas-real-scan/aegra.graph.json",
+    "--joern-home",
+    "/Users/galyossipov/.local/share/code-atlas-tools/joern-4.0.684/joern-cli"
+  ],
+  "workingDirectory": "/Users/galyossipov/code/code-atlas",
+  "freshCpg": true,
+  "freshOverlay": true,
+  "illustrative": false,
+  "validationErrors": 0,
+  "counts": {
+    "routes": 59,
+    "authSteps": 121,
+    "dataAccesses": 108,
+    "entryParams": 113,
+    "identityBindings": 42,
+    "callNodes": 5586,
+    "symbols": 213,
+    "unresolvedGaps": 5
+  },
+  "agentReview": false,
+  "license": "Apache-2.0; see AEGRA-LICENSE"
+}
