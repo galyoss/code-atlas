@@ -67,6 +67,27 @@ class Overlay:
             bucket.sort(key=lambda item: (item.line, item.name))
         for bucket in self.by_caller.values():
             bucket.sort(key=lambda item: (item.line, item.ordinal))
+        # Method -> the block lambdas defined in it at any depth (`m.<lambda>0.<lambda>1`).
+        self.blocks_of: dict[str, list[str]] = defaultdict(list)
+        for caller in self.by_caller:
+            owner, marker, _rest = caller.partition(".<lambda>")
+            if marker:
+                self.blocks_of[owner].append(caller)
+
+    def calls_with_blocks(self, full_name: str) -> list[CallRec]:
+        """Calls in a method and in the blocks inside it, in source order.
+
+        Ruby's `transaction do ... end` and `respond_to do |format|` bodies, and JS
+        callbacks, are separate lambda methods in the CPG; their calls run as part of
+        the method. A file's `<main>` keeps only its own calls, or every handler in
+        the file would join it.
+        """
+        found = list(self.by_caller.get(full_name, []))
+        if not full_name.endswith("<main>"):
+            for block in self.blocks_of.get(full_name, []):
+                found.extend(self.by_caller[block])
+        found.sort(key=lambda item: (item.line, item.ordinal))
+        return found
 
     def method_for(self, file: str, name: str, line: int) -> MethodRec | None:
         best: MethodRec | None = None
