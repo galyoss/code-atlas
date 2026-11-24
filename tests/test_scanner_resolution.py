@@ -100,3 +100,103 @@ def test_later_query_refinements_join_the_access():
     text, end, _ = _snippet_with_refinements(project, "select(Build).where(Build.flow_id == flow_id)", refinements)
     assert text.startswith("select(Build)") and "Flow.user_id == user_id" in text and end == 8
     assert _refinements(project, SimpleNamespace(file="app.py", line=9)) == []
+
+
+def _package(tmp_path, files: dict[str, str]):
+    from scanner.source_index import load_index
+
+    pkg = tmp_path / "app"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    for name, text in files.items():
+        (pkg / name).write_text(text)
+    return load_index(tmp_path)
+
+
+_SERVICE = """\
+class Base:
+    def delete(self, item_id):
+        return self._session.delete(item_id)
+
+
+class AgentService(Base):
+    def __init__(self, session):
+        self._session = session
+
+    def get(self, agent_id):
+        return self._session.get(Agent, agent_id)
+
+
+class FilesTable:
+    def get_file_by_id(self, file_id):
+        return file_id
+
+
+Files = FilesTable()
+"""
+
+_ROUTES = """\
+from typing import Optional
+
+from app.service import AgentService, Files
+
+
+def by_local(session, agent_id):
+    svc = AgentService(session)
+    return svc.get(agent_id)
+
+
+def by_param(svc: Optional[AgentService], agent_id):
+    return svc.delete(agent_id)
+
+
+def by_constructor(session, agent_id):
+    return AgentService(session).get(agent_id)
+
+
+def by_singleton(file_id):
+    return Files.get_file_by_id(file_id)
+
+
+def untyped(svc, agent_id):
+    return svc.get(agent_id)
+"""
+
+
+def _resolve(index, func_name, name, code):
+    overlay = SimpleNamespace(methods_by_full={})
+    caller = index.functions_by_qual[f"app.routes.{func_name}"]
+    return resolve_call(_call(name, code), "app.routes", index, overlay, {}, caller)[:2]
+
+
+def test_methods_on_in_repo_instances_resolve(tmp_path):
+    index = _package(tmp_path, {"service.py": _SERVICE, "routes.py": _ROUTES})
+    assert _resolve(index, "by_local", "get", "svc.get(agent_id)") == ("resolved", "app.service.AgentService.get")
+    assert _resolve(index, "by_param", "delete", "svc.delete(agent_id)") == ("resolved", "app.service.Base.delete")
+    assert _resolve(index, "by_constructor", "get", "AgentService(session).get(agent_id)") == (
+        "resolved",
+        "app.service.AgentService.get",
+    )
+    assert _resolve(index, "by_singleton", "get_file_by_id", "Files.get_file_by_id(file_id)") == (
+        "resolved",
+        "app.service.FilesTable.get_file_by_id",
+    )
+
+
+def test_untyped_receivers_and_external_classes_stay_external(tmp_path):
+    index = _package(tmp_path, {"service.py": _SERVICE, "routes.py": _ROUTES})
+    assert _resolve(index, "untyped", "get", "svc.get(agent_id)")[0] == "external"
+    assert _resolve(index, "by_local", "missing", "svc.missing(agent_id)")[0] == "external"
+
+
+def test_namespace_subpackages_keep_their_package_path(tmp_path):
+    from scanner.source_index import load_index
+
+    root = tmp_path / "backend" / "app"
+    for sub in ("models", "routers"):
+        (root / sub).mkdir(parents=True)
+        (root / sub / "files.py").write_text(f"NAME = '{sub}'\n")
+    (root / "__init__.py").write_text("")
+    index = load_index(tmp_path)
+    assert {"app.models.files", "app.routers.files"} <= set(index.modules)
+    assert "files" not in index.modules
