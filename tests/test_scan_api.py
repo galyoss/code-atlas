@@ -154,7 +154,7 @@ def test_graph_with_no_routes_completes_and_keeps_gaps(tmp_path):
     status, job = service.get(created["id"])
     assert status == 200
     assert job["status"] == "completed"
-    assert job["progress"] == "Every route has a full vote set."
+    assert job["progress"] == "Every route was reviewed or has no data access to review."
     assert job["error"] is None
     assert job["votes"] == []
     assert job["findings"] == []

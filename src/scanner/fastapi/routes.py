@@ -468,8 +468,11 @@ def _bindings(handler: FuncInfo, index: SourceIndex, symbols: dict[str, SymbolFa
         if not auth_deps and param.name in {"user", "current_user"} and not param.depends:
             continue
         produced = None
-        if auth_deps:
-            resolved = index.resolve_name(handler.module, auth_deps[0])
+        # The dependency of an identity parameter produces the identity, whatever its name
+        # (`user = Depends(require_workspace_member)`), so it is an auth step too.
+        producers = auth_deps or param.depends
+        if producers:
+            resolved = index.resolve_name(handler.module, producers[0])
             if resolved and resolved[0] == "function":
                 produced = resolved[1]
                 _ensure_function_symbol(index, produced, symbols)

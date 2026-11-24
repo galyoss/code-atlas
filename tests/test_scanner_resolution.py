@@ -200,3 +200,23 @@ def test_namespace_subpackages_keep_their_package_path(tmp_path):
     index = load_index(tmp_path)
     assert {"app.models.files", "app.routers.files"} <= set(index.modules)
     assert "files" not in index.modules
+
+
+def test_an_identity_parameter_names_its_dependency_as_producer(tmp_path):
+    from scanner.fastapi.routes import _bindings
+
+    index = _package(
+        tmp_path,
+        {
+            "deps.py": "def require_workspace_member(workspace_id, user=None):\n    return user\n",
+            "routes.py": (
+                "from fastapi import Depends\n"
+                "from app.deps import require_workspace_member\n\n"
+                "def get_agent(workspace_id, agent_id, user = Depends(require_workspace_member)):\n"
+                "    return agent_id\n"
+            ),
+        },
+    )
+    handler = index.functions_by_qual["app.routes.get_agent"]
+    bindings = _bindings(handler, index, {})
+    assert [(b.name, b.produced_by_qualname) for b in bindings] == [("user", "app.deps.require_workspace_member")]

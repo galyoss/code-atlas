@@ -1,0 +1,208 @@
+{
+  "description": "Published IDOR advisories, each checked on a vulnerable and a fixed revision. A vulnerable route should produce a finding; the same route on the fixed revision should not. Paths are the public paths; parameter names and mount prefixes are matched loosely. `gap` marks a case the scanner is known not to model yet.",
+  "targets": [
+    {"id": "aegra-v0.9.6", "repository": "https://github.com/aegra/aegra", "revision": "v0.9.6", "sha": "d7d80c850010a9c5a3d2be59254c19b9eb0e25dd"},
+    {"id": "aegra-v0.9.7", "repository": "https://github.com/aegra/aegra", "revision": "v0.9.7", "sha": "bc2d538885d9315cf662282ffe81da991fc440d2"},
+    {"id": "langflow-v1.7.3", "repository": "https://github.com/langflow-ai/langflow", "revision": "v1.7.3", "sha": "dbe777ecaa51042f84c6f31629d59a6596835fd2"},
+    {"id": "langflow-v1.9.1", "repository": "https://github.com/langflow-ai/langflow", "revision": "v1.9.1", "sha": "dc26d19c1ed5b2779a3a759f78a747f47089c534"},
+    {"id": "open-webui-v0.8.5", "repository": "https://github.com/open-webui/open-webui", "revision": "v0.8.5", "sha": "1ac3dd4a893e13803e7b889611303c4a7a5cc470"},
+    {"id": "open-webui-v0.8.6", "repository": "https://github.com/open-webui/open-webui", "revision": "v0.8.6", "sha": "9c9a18d6d4311ff246d5d1345d94581bf25c604b"},
+    {"id": "open-webui-v0.9.4", "repository": "https://github.com/open-webui/open-webui", "revision": "v0.9.4", "sha": "f51d2b026f1b0e7283b15f093412be8b67d24770"},
+    {"id": "open-webui-v0.9.5", "repository": "https://github.com/open-webui/open-webui", "revision": "v0.9.5", "sha": "3660bc00fd807deced3400a63bfa6db47811a3bb"},
+    {"id": "praisonai-platform-pre-hardening", "repository": "https://github.com/MervinPraison/PraisonAI", "revision": "parent of 179cab0", "sha": "402d7ed9fc5926babaa70c97a6ee5353e3d0dd62", "path": "src/praisonai-platform"},
+    {"id": "praisonai-platform-scoped", "repository": "https://github.com/MervinPraison/PraisonAI", "revision": "516d8b6", "sha": "516d8b6d88dfb8da13b95898325e6bfe5500aa68", "path": "src/praisonai-platform"},
+    {"id": "chatwoot-v4.8.0", "repository": "https://github.com/chatwoot/chatwoot", "revision": "v4.8.0", "sha": "4e9f644646ee3c086db5cc63374ddfa8f0e12d02"},
+    {"id": "chatwoot-v4.9.0", "repository": "https://github.com/chatwoot/chatwoot", "revision": "v4.9.0", "sha": "73140998ff2a9d514d34d259a6bd0f15b33c3804"},
+    {"id": "huginn-pre-22fd8ad", "repository": "https://github.com/huginn/huginn", "revision": "parent of 22fd8ad", "sha": "560e72ad2e1166a4df1e655dc01d6ebadae54f42"},
+    {"id": "huginn-22fd8ad", "repository": "https://github.com/huginn/huginn", "revision": "22fd8ad", "sha": "22fd8adf73c1617821dc59d68722504082f399a8"},
+    {"id": "fat-free-crm-v0.25.0", "repository": "https://github.com/fatfreecrm/fat_free_crm", "revision": "v0.25.0", "sha": "0d18cf48577eaf95f337d7642157e310d99a5abe"},
+    {"id": "fat-free-crm-v0.26.0", "repository": "https://github.com/fatfreecrm/fat_free_crm", "revision": "v0.26.0", "sha": "7a5b1656697da90482050be45059b3f4349c2c8f"},
+    {"id": "khoj-1.28.3", "repository": "https://github.com/khoj-ai/khoj", "revision": "1.28.3", "sha": "99c1d2831a91b0b71099c30397455cf7d547695a"},
+    {"id": "khoj-1.29.0", "repository": "https://github.com/khoj-ai/khoj", "revision": "1.29.0", "sha": "f05e64cf8c9d761177b34e855f52c1a19a6107a0"}
+  ],
+  "advisories": [
+    {
+      "id": "GHSA-m98r-6667-4wq7",
+      "title": "Aegra: cross-user run injection in /threads/{thread_id}/runs",
+      "vulnerable": ["aegra-v0.9.6"],
+      "fixed": ["aegra-v0.9.7"],
+      "routes": [
+        "POST /threads/{thread_id}/runs",
+        "POST /threads/{thread_id}/runs/stream",
+        "POST /threads/{thread_id}/runs/wait"
+      ]
+    },
+    {
+      "id": "GHSA-9c59-2mvc-vfr8",
+      "title": "Langflow: missing ownership enforcement on 7 Monitor API endpoints",
+      "vulnerable": ["langflow-v1.7.3"],
+      "fixed": ["langflow-v1.9.1"],
+      "routes": [
+        "GET /monitor/builds",
+        "DELETE /monitor/builds",
+        "DELETE /monitor/messages",
+        "PUT /monitor/messages/{message_id}",
+        "PATCH /monitor/messages/session/{old_session_id}",
+        "DELETE /monitor/messages/session/{session_id}",
+        "GET /monitor/transactions"
+      ]
+    },
+    {
+      "id": "GHSA-rf6x-r45m-xv3w",
+      "title": "Langflow: missing ownership verification in API key deletion",
+      "vulnerable": ["langflow-v1.7.3"],
+      "fixed": ["langflow-v1.9.1"],
+      "routes": ["DELETE /api_key/{api_key_id}"]
+    },
+    {
+      "id": "GHSA-7grx-3xcx-2xv5",
+      "title": "Langflow: unauthenticated IDOR on image downloads",
+      "vulnerable": ["langflow-v1.7.3"],
+      "fixed": ["langflow-v1.9.1"],
+      "routes": ["GET /files/images/{flow_id}/{file_name}"],
+      "gap": "The object is read from file storage, not the database, so the scanner records no data access."
+    },
+    {
+      "id": "GHSA-qrpv-q767-xqq2",
+      "title": "Langflow: IDOR in /api/v1/responses executes another user's flow",
+      "vulnerable": ["langflow-v1.7.3"],
+      "fixed": ["langflow-v1.9.1"],
+      "routes": ["POST /responses"]
+    },
+    {
+      "id": "GHSA-gh98-4phw-6fmw",
+      "title": "Langflow: cross-user flow access via deprecated /build/{flow_id}/vertices",
+      "vulnerable": ["langflow-v1.7.3", "langflow-v1.9.1"],
+      "fixed": [],
+      "routes": [
+        "POST /build/{flow_id}/vertices",
+        "POST /build/{flow_id}/vertices/{vertex_id}"
+      ]
+    },
+    {
+      "id": "GHSA-26gm-93rw-cchf",
+      "title": "Open WebUI: deleting a file from a knowledge base does not check the file belongs to it",
+      "vulnerable": ["open-webui-v0.8.5"],
+      "fixed": ["open-webui-v0.8.6"],
+      "routes": ["POST /api/v1/knowledge/{id}/file/remove"]
+    },
+    {
+      "id": "GHSA-jjp7-g2jw-wh3j",
+      "title": "Open WebUI: process_files_batch overwrites any file by id",
+      "vulnerable": ["open-webui-v0.8.5"],
+      "fixed": ["open-webui-v0.8.6"],
+      "routes": ["POST /api/v1/retrieval/process/files/batch"]
+    },
+    {
+      "id": "GHSA-w9f8-gxf9-rhvw",
+      "title": "Open WebUI: query/collection reads other users' memories by collection name",
+      "vulnerable": ["open-webui-v0.8.5"],
+      "fixed": ["open-webui-v0.8.6"],
+      "routes": ["POST /api/v1/retrieval/query/collection"],
+      "gap": "The object is a vector-store collection named in the request, not a database row."
+    },
+    {
+      "id": "GHSA-wwhq-cx22-f7vv",
+      "title": "Open WebUI: any group or DM channel member can update another member's message",
+      "vulnerable": ["open-webui-v0.9.4"],
+      "fixed": ["open-webui-v0.9.5"],
+      "routes": ["POST /api/v1/channels/{id}/messages/{message_id}/update"]
+    },
+    {
+      "id": "GHSA-5gc6-xhv4-2wg6",
+      "title": "Open WebUI: pin and unpin need only read access to a standard channel",
+      "vulnerable": ["open-webui-v0.9.4"],
+      "fixed": ["open-webui-v0.9.5"],
+      "routes": ["POST /api/v1/channels/{id}/messages/{message_id}/pin"]
+    },
+    {
+      "id": "GHSA-r472-mw7m-967f",
+      "title": "Open WebUI: folder and knowledge-base attach accept another user's file_id",
+      "vulnerable": ["open-webui-v0.9.4"],
+      "fixed": ["open-webui-v0.9.5"],
+      "routes": [
+        {"route": "POST /api/v1/folders/{id}/update", "handlerFile": "routers/folders.py"},
+        "POST /api/v1/knowledge/{id}/file/add"
+      ]
+    },
+    {
+      "id": "GHSA-4g37-7p2c-38r9",
+      "title": "Open WebUI: retrieval endpoints read and write knowledge-base collections by UUID",
+      "vulnerable": ["open-webui-v0.9.4"],
+      "fixed": ["open-webui-v0.9.5"],
+      "routes": [
+        "POST /api/v1/retrieval/query/doc",
+        "POST /api/v1/retrieval/query/collection",
+        "POST /api/v1/retrieval/process/text"
+      ],
+      "gap": "The object is a vector-store collection named in the request, not a database row."
+    },
+    {
+      "id": "GHSA-7p8g-6c6g-h9w7",
+      "title": "PraisonAI platform: agent endpoints load agent_id with no workspace constraint",
+      "note": "179cab0 added a route-level workspace check after the load (PATCH still updated first); 516d8b6 moved the check into the service for every action, so it is the fixed revision.",
+      "vulnerable": ["praisonai-platform-pre-hardening"],
+      "fixed": ["praisonai-platform-scoped"],
+      "routes": [
+        "GET /api/v1/workspaces/{workspace_id}/agents/{agent_id}",
+        "PATCH /api/v1/workspaces/{workspace_id}/agents/{agent_id}",
+        "DELETE /api/v1/workspaces/{workspace_id}/agents/{agent_id}"
+      ]
+    },
+    {
+      "id": "GHSA-x288-jh8j-348c",
+      "title": "Chatwoot: writable account_id moves portals, automation rules, macros and Twilio channels to another account",
+      "vulnerable": ["chatwoot-v4.8.0"],
+      "fixed": ["chatwoot-v4.9.0"],
+      "routes": [
+        "POST /api/v1/accounts/{account_id}/automation_rules",
+        "PATCH /api/v1/accounts/{account_id}/automation_rules/{id}",
+        "POST /api/v1/accounts/{account_id}/macros",
+        "PATCH /api/v1/accounts/{account_id}/macros/{id}",
+        "POST /api/v1/accounts/{account_id}/portals",
+        "PATCH /api/v1/accounts/{account_id}/portals/{id}",
+        "POST /api/v1/accounts/{account_id}/channels/twilio_channel"
+      ]
+    },
+    {
+      "id": "GHSA-x7pc-rrfc-4chw",
+      "title": "Huginn: POST /agents/propagate runs every user's pending agents",
+      "vulnerable": ["huginn-pre-22fd8ad"],
+      "fixed": ["huginn-22fd8ad"],
+      "routes": ["POST /agents/propagate"]
+    },
+    {
+      "id": "GHSA-9pm8-vwc5-w2hm",
+      "title": "Fat Free CRM: any authenticated user can delete emails by id",
+      "vulnerable": ["fat-free-crm-v0.25.0"],
+      "fixed": ["fat-free-crm-v0.26.0"],
+      "routes": ["DELETE /emails/{id}"],
+      "gap": "The Gemfile loads Rails through the gemspec, so the scanner does not pick the Rails adapter."
+    },
+    {
+      "id": "GHSA-hq4h-w933-jm6c",
+      "title": "Khoj: subscription update acts on the email in the request",
+      "vulnerable": ["khoj-1.28.3"],
+      "fixed": ["khoj-1.29.0"],
+      "routes": ["PATCH /api/subscription"],
+      "gap": "Data access goes through the Django ORM; the FastAPI SQL reader only reads SQLAlchemy."
+    }
+  ],
+  "outOfScope": [
+    {
+      "id": "GHSA-q494-8v3j-cp9j",
+      "title": "aegra-api cross-user Store read via namespace prefix matching",
+      "reason": "The flaw is an unescaped LIKE in langgraph-checkpoint-postgres. Aegra 0.10.8 only raises the dependency floor, so route-level code analysis cannot distinguish 0.10.7 from 0.10.8. It needs dependency scanning."
+    },
+    {
+      "id": "GHSA-3hch-x692-6qj3",
+      "title": "GPUStack: Kubernetes API proxy forwards to clusters without a resource-level check",
+      "reason": "The object is a Kubernetes cluster behind a proxy, not a database row. The non-database gap is already covered by the Langflow image and Open WebUI vector-store cases."
+    },
+    {
+      "id": "TypeScript Express",
+      "title": "Flowise, n8n, Unleash, Actual, NocoDB",
+      "reason": "Express detection reads only .js files and a root package.json. Flowise 3.0.13 produced 0 routes. These have many published IDOR advisories once TypeScript is supported."
+    }
+  ]
+}
