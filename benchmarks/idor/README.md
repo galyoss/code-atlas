@@ -31,11 +31,23 @@ Checkouts, graphs and reports are under `.work/idor-benchmark`. A graph is cache
 
 Advisory paths are the public paths. Matching ignores parameter names (`{id}`, `:id`) and accepts a segment-aligned suffix, because the scanner does not always record a mount prefix. An exact path wins; duplicate routes are all reviewed.
 
+On macOS the Joern 4.0.684 launch scripts call `greadlink`. Install coreutils, or put a `greadlink` that runs `/usr/bin/readlink "$@"` on `PATH`.
+
 ## Static results on 2026-11-24
 
-Aegra and Langflow, from graphs cached on 2026-11-17. The other targets need Joern.
+Aegra and Langflow graphs were cached on 2026-11-17. The rest were scanned on 2026-11-24 with `main` + galyoss/code-atlas#9 (scanner `51794a56d859`).
 
-| Code | Vulnerable routes reachable |
-|---|---|
-| `main` (scanner `20221709d4c7`) | 0 of 15 (Langflow 1.9.1 was not cached for this scanner) |
-| `main` + galyoss/code-atlas#9 (scanner `51794a56d859`) | 16 of 17; the miss is the image-download gap |
+| Repository | Vulnerable routes reachable | Why not |
+|---|---|---|
+| Aegra | 3 of 3 | |
+| Langflow | 13 of 14 | image download reads file storage (known gap) |
+| Open WebUI | 0 of 10 | 0 data accesses in 345 routes: `Files.get_file_by_id` is a method on a module-level instance (`Files = FilesTable()`) and is recorded `external` |
+| PraisonAI platform | 0 of 3 | `AgentService(session).get(agent_id)` resolves the class but records `.get` as `external`, so `session.get(Agent, …)` is never reached |
+| Chatwoot | route not found | 9 routes found; nothing inside `namespace :api` / `scope module:` |
+| Huginn | route not found | standard resource routes only; `collection` / `member` routes such as `POST /agents/propagate` are missing, and no ActiveRecord data accesses |
+| Fat Free CRM | route not found | known gap: Rails adapter not picked |
+| Khoj | 0 of 1 | known gap: Django ORM |
+
+On `main` (scanner `20221709d4c7`), Aegra and Langflow reach 0 of 15; Langflow 1.9.1 was not cached for that scanner.
+
+Totals without known gaps: 16 of 33 vulnerable routes reachable, all of them on Aegra and Langflow.
