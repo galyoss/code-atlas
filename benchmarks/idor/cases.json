@@ -9,7 +9,7 @@
     {"id": "open-webui-v0.8.6", "repository": "https://github.com/open-webui/open-webui", "revision": "v0.8.6", "sha": "9c9a18d6d4311ff246d5d1345d94581bf25c604b"},
     {"id": "open-webui-v0.9.4", "repository": "https://github.com/open-webui/open-webui", "revision": "v0.9.4", "sha": "f51d2b026f1b0e7283b15f093412be8b67d24770"},
     {"id": "open-webui-v0.9.5", "repository": "https://github.com/open-webui/open-webui", "revision": "v0.9.5", "sha": "3660bc00fd807deced3400a63bfa6db47811a3bb"},
-    {"id": "praisonai-platform-pre-scope", "repository": "https://github.com/MervinPraison/PraisonAI", "revision": "parent of 516d8b6", "sha": "7eb98e895bf6d3854d6f199cbdbce96e0974473d", "path": "src/praisonai-platform"},
+    {"id": "praisonai-platform-pre-hardening", "repository": "https://github.com/MervinPraison/PraisonAI", "revision": "parent of 179cab0", "sha": "402d7ed9fc5926babaa70c97a6ee5353e3d0dd62", "path": "src/praisonai-platform"},
     {"id": "praisonai-platform-scoped", "repository": "https://github.com/MervinPraison/PraisonAI", "revision": "516d8b6", "sha": "516d8b6d88dfb8da13b95898325e6bfe5500aa68", "path": "src/praisonai-platform"},
     {"id": "chatwoot-v4.8.0", "repository": "https://github.com/chatwoot/chatwoot", "revision": "v4.8.0", "sha": "4e9f644646ee3c086db5cc63374ddfa8f0e12d02"},
     {"id": "chatwoot-v4.9.0", "repository": "https://github.com/chatwoot/chatwoot", "revision": "v4.9.0", "sha": "73140998ff2a9d514d34d259a6bd0f15b33c3804"},
@@ -140,7 +140,8 @@
     {
       "id": "GHSA-7p8g-6c6g-h9w7",
       "title": "PraisonAI platform: agent endpoints load agent_id with no workspace constraint",
-      "vulnerable": ["praisonai-platform-pre-scope"],
+      "note": "179cab0 added a route-level workspace check after the load (PATCH still updated first); 516d8b6 moved the check into the service for every action, so it is the fixed revision.",
+      "vulnerable": ["praisonai-platform-pre-hardening"],
       "fixed": ["praisonai-platform-scoped"],
       "routes": [
         "GET /api/v1/workspaces/{workspace_id}/agents/{agent_id}",
