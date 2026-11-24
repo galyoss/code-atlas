@@ -7,7 +7,8 @@ from __future__ import annotations
 
 _REPLY = """\
 Reply with one JSON object and no other text:
-{"routeId":"<id of the given route>","verdict":"present"|"absent"|"inconclusive","reason":"<short reason; file and line names are allowed>"}
+{"routeId":"<id of the given route>","verdict":"present"|"absent"|"inconclusive","reason":"<short reason; file and line names are allowed>","dataAccessId":"<present only: id of the route's dataAccesses entry that loads or changes the object without the tie>"}
+For present, dataAccessId is required and is copied from the route's dataAccesses. Omit it on other verdicts.
 Do not include an exploit or a payload.
 """
 

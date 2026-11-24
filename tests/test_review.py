@@ -261,7 +261,7 @@ def test_present_on_a_partial_slice_is_stored_inconclusive(tmp_path):
     assert len(model.calls) == 4
     assert {vote["verdict"] for vote in job["votes"]} == {"inconclusive"}
     assert {vote["reason"] for vote in job["votes"]} == {
-        "Slice coverage is not complete, so a present vote is inconclusive."
+        "Slice coverage is not complete and the present vote did not cite a data access on this route."
     }
 
 
@@ -469,6 +469,74 @@ def test_unknown_coverage_blocks_present():
     assert result.findings == []
     assert result.votes[0]["verdict"] == "inconclusive"
     assert "coverage" in result.votes[0]["reason"]
+
+
+def _partial_route(helper_resolution):
+    route = _route(coverage="partial")
+    route["dataAccesses"][0]["callId"] = "call_get"
+    route["callGraph"] = [
+        {"id": "call_str", "resolution": "ambiguous", "children": []},
+        {
+            "id": "call_helper",
+            "resolution": helper_resolution,
+            "children": [{"id": "call_get", "resolution": "external", "children": []}],
+        },
+    ]
+    return route
+
+
+def _cite(access_id):
+    def decide(model, system, user):
+        route_id = json.loads(user)["route"]["id"]
+        return json.dumps(
+            {"routeId": route_id, "verdict": "present", "reason": "claimed", "dataAccessId": access_id}
+        )
+
+    return FakeModel(decide)
+
+
+def test_present_on_a_partial_route_stands_on_a_resolved_cited_path():
+    route = _partial_route("resolved")
+    result = review_graph(
+        _document(route),
+        model="reviewer",
+        agent_count=2,
+        agreement_threshold=2,
+        client=_cite("da_load"),
+    )
+    assert result.complete is True
+    assert [vote["verdict"] for vote in result.votes] == ["present", "present"]
+    assert [vote["dataAccessId"] for vote in result.votes] == ["da_load", "da_load"]
+    assert len(result.findings) == 1
+    assert result.findings[0]["dataAccessIds"] == ["da_load"]
+    assert result.findings[0]["routeCoverage"] == route["budget"]["coverage"]
+
+
+def test_unresolved_call_on_the_cited_path_blocks_present():
+    result = review_graph(
+        _document(_partial_route("ambiguous")),
+        model="reviewer",
+        agent_count=1,
+        agreement_threshold=1,
+        client=_cite("da_load"),
+    )
+    assert result.findings == []
+    assert result.votes[0]["verdict"] == "inconclusive"
+    assert "unresolved call" in result.votes[0]["reason"]
+    assert "dataAccessId" not in result.votes[0]
+
+
+def test_citing_an_access_from_another_route_blocks_present():
+    result = review_graph(
+        _document(_partial_route("resolved")),
+        model="reviewer",
+        agent_count=1,
+        agreement_threshold=1,
+        client=_cite("da_elsewhere"),
+    )
+    assert result.findings == []
+    assert result.votes[0]["verdict"] == "inconclusive"
+    assert "did not cite a data access on this route" in result.votes[0]["reason"]
 
 
 def test_a_second_check_is_another_pass():

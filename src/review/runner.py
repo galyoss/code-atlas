@@ -3,6 +3,9 @@
 Each call alternates the check's hunter and skeptic prompts, starting with
 the hunter. Agreement counts present votes on that route and check. Reasons
 are stored and not compared.
+
+A present vote cites one of the route's data accesses. On a route with partial
+coverage it stands only when the recorded call path to that access is resolved.
 """
 
 from __future__ import annotations
@@ -17,6 +20,8 @@ _REASON_LIMIT = 480
 _COVERAGE_AXES = ("authChain", "callGraph", "dataFlow")
 _VERDICTS = {"present", "absent", "inconclusive"}
 _COVERAGE_REASON = "Slice coverage is not complete, so a present vote is inconclusive."
+_CITATION_REASON = "Slice coverage is not complete and the present vote did not cite a data access on this route."
+_PATH_REASON = "The recorded path to the cited data access passes through an unresolved call, so a present vote is inconclusive."
 
 
 @dataclass(frozen=True)
@@ -31,6 +36,7 @@ class _Parsed:
     verdict: str
     reason: str
     failed: bool
+    access_id: str | None = None
 
 
 def review_graph(
@@ -71,16 +77,17 @@ def review_graph(
                     parsed = _Parsed("inconclusive", _failure_reason(exc, "The review call failed."), True)
                 if parsed.failed:
                     failures += 1
-                votes.append(
-                    {
-                        "id": f"vote_{uuid.uuid4().hex}",
-                        "check": check.id,
-                        "routeId": route["id"],
-                        "role": role,
-                        "verdict": parsed.verdict,
-                        "reason": parsed.reason,
-                    }
-                )
+                vote = {
+                    "id": f"vote_{uuid.uuid4().hex}",
+                    "check": check.id,
+                    "routeId": route["id"],
+                    "role": role,
+                    "verdict": parsed.verdict,
+                    "reason": parsed.reason,
+                }
+                if parsed.verdict == "present" and parsed.access_id is not None:
+                    vote["dataAccessId"] = parsed.access_id
+                votes.append(vote)
     findings = _findings(votes, routes, selected, agreement_threshold)
     full = _full_vote_sets(votes, routes, selected, agent_count)
     return ReviewResult(votes=votes, findings=findings, complete=failures == 0 and full and usable)
@@ -172,16 +179,65 @@ def _parse(text: str, route_id: str) -> _Parsed:
     reason = payload.get("reason", "")
     if not isinstance(reason, str):
         reason = ""
-    return _Parsed(verdict, _short(reason.strip()), False)
+    access_id = payload.get("dataAccessId")
+    if not isinstance(access_id, str) or not access_id.strip():
+        access_id = None
+    return _Parsed(verdict, _short(reason.strip()), False, access_id)
 
 
 def _downgrade_present(check, route, neighbors, symbols, parsed: _Parsed) -> _Parsed:
-    if _coverage_is_partial(route):
-        return _Parsed("inconclusive", _COVERAGE_REASON, False)
+    gap = _cited_path_gap(route, parsed.access_id)
+    if gap is not None:
+        return _Parsed("inconclusive", gap, False)
     gap = check.missing_snippet(route, neighbors, symbols)
     if isinstance(gap, str) and gap.strip():
         return _Parsed("inconclusive", _short(gap.strip()), False)
     return parsed
+
+
+def _cited_path_gap(route: dict, access_id: str | None) -> str | None:
+    """Why a present vote citing `access_id` cannot stand on coverage, or None.
+
+    A route with complete coverage needs no citation. On a partial route, unresolved
+    calls elsewhere stay visible to the reviewer and do not block a claim about an
+    access whose own recorded path is resolved.
+    """
+    if not _coverage_is_partial(route):
+        return None
+    access = next(
+        (item for item in _dicts(route.get("dataAccesses")) if access_id is not None and item.get("id") == access_id),
+        None,
+    )
+    if access is None:
+        return _CITATION_REASON
+    call_id = access.get("callId")
+    path = _call_path(route, call_id) if isinstance(call_id, str) else None
+    if path is None:
+        return _COVERAGE_REASON
+    if any(node.get("resolution") != "resolved" for node in path[:-1]):
+        return _PATH_REASON
+    return None
+
+
+def _call_path(route: dict, call_id: str) -> list[dict] | None:
+    """The recorded calls from the handler down to `call_id`, inclusive."""
+    roots = list(_dicts(route.get("callGraph")))
+    for step in _dicts(route.get("authChain")):
+        roots.extend(_dicts(step.get("calls")))
+    stack = [(node, [node]) for node in reversed(roots)]
+    while stack:
+        node, trail = stack.pop()
+        if node.get("id") == call_id:
+            return trail
+        for child in reversed(_dicts(node.get("children"))):
+            stack.append((child, [*trail, child]))
+    return None
+
+
+def _dicts(value) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
 
 
 def _coverage_is_partial(route: dict) -> bool:
@@ -204,16 +260,23 @@ def _findings(votes: list[dict], routes: list[dict], checks, agreement_threshold
             present = [vote for vote in bucket if vote["verdict"] == "present"]
             if len(present) < agreement_threshold:
                 continue
-            findings.append(
-                {
-                    "id": f"finding_{uuid.uuid4().hex}",
-                    "check": check.id,
-                    "routeId": route["id"],
-                    "agreementThreshold": agreement_threshold,
-                    "presentCount": len(present),
-                    "voteIds": [vote["id"] for vote in present],
-                }
-            )
+            finding = {
+                "id": f"finding_{uuid.uuid4().hex}",
+                "check": check.id,
+                "routeId": route["id"],
+                "agreementThreshold": agreement_threshold,
+                "presentCount": len(present),
+                "voteIds": [vote["id"] for vote in present],
+            }
+            cited = list(dict.fromkeys(vote["dataAccessId"] for vote in present if "dataAccessId" in vote))
+            if cited:
+                finding["dataAccessIds"] = cited
+            if _coverage_is_partial(route):
+                # The finding rests on its cited paths; the rest of the route may be unresolved.
+                budget = route.get("budget")
+                coverage = budget.get("coverage") if isinstance(budget, dict) else None
+                finding["routeCoverage"] = coverage if isinstance(coverage, dict) else None
+            findings.append(finding)
     return findings
 
 
