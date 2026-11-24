@@ -325,3 +325,99 @@ def _call(name: str, full: str, code: str, file: str, line: int, caller: str) ->
         "caller": caller,
         "dispatch": "DYNAMIC_DISPATCH",
     }
+
+
+NESTED_ROUTES = """\
+Rails.application.routes.draw do
+  namespace :api do
+    namespace :v1 do
+      resources :accounts, only: [:show] do
+        scope module: :accounts do
+          resources :macros, only: [:create, :update]
+          namespace :channels do
+            resource :twilio_channel, only: [:create]
+          end
+        end
+      end
+    end
+  end
+  if Rails.env.development?
+    get "/debug", to: "debug#show"
+  end
+  resources :agents, only: [:index] do
+    member do
+      post :run
+    end
+    collection do
+      post :propagate
+    end
+  end
+end
+"""
+
+
+def _nested_declarations(code: str, name: str):
+    from types import SimpleNamespace
+
+    from scanner.rails.routes import _declarations
+
+    controllers = {
+        "app/controllers/api/v1/accounts_controller.rb": "class Api::V1::AccountsController\nend\n",
+        "app/controllers/api/v1/accounts/macros_controller.rb": "class Api::V1::Accounts::MacrosController\nend\n",
+        "app/controllers/api/v1/accounts/channels/twilio_channels_controller.rb": "class TwilioChannelsController\nend\n",
+        "app/controllers/agents_controller.rb": "class AgentsController\nend\n",
+        "app/controllers/debug_controller.rb": "class DebugController\nend\n",
+    }
+    index = SimpleNamespace(files={"config/routes.rb": NESTED_ROUTES, **controllers})
+    line = next(number for number, text in enumerate(NESTED_ROUTES.splitlines(), 1) if code in text)
+    call = SimpleNamespace(name=name, code=code, file="config/routes.rb", line=line)
+    return [(method, path, located) for method, path, _mechanism, _action, located, _cls in _declarations(call, index)]
+
+
+def test_nested_resources_take_the_namespace_path_and_module():
+    assert _nested_declarations("resources :macros, only: [:create, :update]", "resources") == [
+        ("POST", "/api/v1/accounts/{account_id}/macros", "app/controllers/api/v1/accounts/macros_controller.rb"),
+        ("PATCH", "/api/v1/accounts/{account_id}/macros/{id}", "app/controllers/api/v1/accounts/macros_controller.rb"),
+        ("PUT", "/api/v1/accounts/{account_id}/macros/{id}", "app/controllers/api/v1/accounts/macros_controller.rb"),
+    ]
+
+
+def test_singular_resource_routes_to_the_plural_controller():
+    assert _nested_declarations("resource :twilio_channel, only: [:create]", "resource") == [
+        (
+            "POST",
+            "/api/v1/accounts/{account_id}/channels/twilio_channel",
+            "app/controllers/api/v1/accounts/channels/twilio_channels_controller.rb",
+        )
+    ]
+
+
+def test_member_and_collection_routes_and_plain_blocks():
+    assert _nested_declarations("post :run", "post") == [("POST", "/agents/{id}/run", "app/controllers/agents_controller.rb")]
+    assert _nested_declarations("post :propagate", "post") == [
+        ("POST", "/agents/propagate", "app/controllers/agents_controller.rb")
+    ]
+    assert _nested_declarations('get "/debug", to: "debug#show"', "get") == [
+        ("GET", "/debug", "app/controllers/debug_controller.rb")
+    ]
+
+
+def test_block_calls_join_their_method_but_not_main():
+    from scanner.overlay import CallRec, Overlay
+
+    def call(name, caller, line):
+        return CallRec(name, "", name, "app.rb", line, caller, "STATIC_DISPATCH", 1)
+
+    method = "app.rb:<main>.ItemsController.update"
+    overlay = Overlay(
+        [],
+        [
+            call("transaction", method, 2),
+            call("update!", method + ".<lambda>0", 3),
+            call("render", method + ".<lambda>0.<lambda>1", 4),
+            call("route_a", "app.rb:<main>", 1),
+            call("inside_a", "app.rb:<main>.<lambda>0", 5),
+        ],
+    )
+    assert [c.name for c in overlay.calls_with_blocks(method)] == ["transaction", "update!", "render"]
+    assert [c.name for c in overlay.calls_with_blocks("app.rb:<main>")] == ["route_a"]

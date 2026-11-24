@@ -5,6 +5,7 @@ The schema writer only sees `CallFact`. It does not resolve Python calls.
 
 from __future__ import annotations
 
+import ast
 import builtins
 import re
 from dataclasses import dataclass, field
@@ -136,8 +137,12 @@ def resolve_call(
     index: SourceIndex,
     overlay: Overlay,
     symbols: dict[str, SymbolFact],
+    caller: FuncInfo | None = None,
 ) -> tuple[str, str | None, list[str] | None, str]:
-    """Return resolution, symbol key, candidates, and a qualified name."""
+    """Return resolution, symbol key, candidates, and a qualified name.
+
+    `caller` is the function the call sits in; its locals and parameters type a receiver.
+    """
     if not _is_attribute(call):
         resolved = index.resolve_name(module, call.name)
         if resolved is None:
@@ -158,8 +163,39 @@ def resolve_call(
         if func is not None:
             _symbol_for_function(index, func.qualname, symbols)
             return "resolved", func.qualname, None, func.qualname
+    func = _receiver_method(call, module, index, caller)
+    if func is not None:
+        _symbol_for_function(index, func.qualname, symbols)
+        return "resolved", func.qualname, None, func.qualname
     qual = _external_name(call)
     return "external", None, None, qual
+
+
+def _receiver_method(call: CallRec, module: str, index: SourceIndex, caller: FuncInfo | None) -> FuncInfo | None:
+    """A method on an instance of an in-repo class, when Joern did not type the receiver.
+
+    The receiver is a constructor call (`Service(db).get(...)`), a local or parameter of
+    the caller (`svc = Service(db)`; `svc: Service`), or a module-level instance such as
+    `Files = FilesTable()`, possibly imported.
+    """
+    code = _AWAIT.sub("", (call.code or "").strip())
+    try:
+        tree = ast.parse(code, mode="eval")
+    except SyntaxError:
+        return None
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == call.name):
+            continue
+        receiver = node.func.value
+        if isinstance(receiver, ast.Call) and isinstance(receiver.func, ast.Name):
+            class_qual = index.class_named(module, receiver.func.id)
+        elif isinstance(receiver, ast.Name):
+            # An instance first; otherwise a class method or static method on the class itself.
+            class_qual = index.instance_class(module, receiver.id, caller) or index.class_named(module, receiver.id)
+        else:
+            class_qual = None
+        return index.method_of(class_qual, call.name) if class_qual else None
+    return None
 
 
 def _external_name(call: CallRec) -> str:
@@ -207,7 +243,7 @@ def build_calls(
         nodes.append(
             _node_for(
                 call,
-                func.module,
+                func,
                 project,
                 symbols,
                 budget,
@@ -223,7 +259,7 @@ def build_calls(
 
 def _node_for(
     call: CallRec,
-    module: str,
+    caller: FuncInfo,
     project: Project,
     symbols: dict[str, SymbolFact],
     budget: Budget,
@@ -232,7 +268,7 @@ def _node_for(
     ordinal: int,
 ) -> CallFact:
     resolution, symbol_key, candidates, qual = resolve_call(
-        call, module, project.index, project.overlay, symbols
+        call, caller.module, project.index, project.overlay, symbols, caller
     )
     touches = touches_of(call.name, call.code)
     children: list[CallFact] = []

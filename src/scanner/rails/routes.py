@@ -28,8 +28,15 @@ _BEFORE = re.compile(
     r"before_action\s+:([A-Za-z_][\w?!]*)"
     r"(?:\s*,\s*(only|except)\s*:\s*(?:\[([^\]]*)\]|:([A-Za-z_][\w?!]*)))?"
 )
+_SINGULAR = re.compile(
+    r"\bresource\s+:([a-z0-9_]+)(?:\s*,\s*only:\s*\[([^\]]*)\])?(?:\s*,\s*except:\s*\[([^\]]*)\])?"
+)
+_SYMBOL_VERB = re.compile(r"""^\s*(get|post|put|patch|delete)\s+:([A-Za-z_][\w?!]*)""")
 _NS = re.compile(r"\bnamespace\s+:([A-Za-z0-9_]+)")
 _SCOPE = re.compile(r"""\bscope\s+(?:path:\s*)?['"]([^'"]+)['"]""")
+_MODULE = re.compile(r"""\bmodule:\s*[:'"]?([A-Za-z0-9_/]+)""")
+_MEMBER = re.compile(r"^\s*(member|collection)\s+do\b")
+_OPENER = re.compile(r"^\s*(?:if|unless|case|begin|while|until|def|class|module)\b(?!:)")
 _DO = re.compile(r"\bdo\b")
 _END = re.compile(r"\bend\b")
 _ACTIONS = (
@@ -41,6 +48,16 @@ _ACTIONS = (
     ("PATCH", "/{id}", "update"),
     ("PUT", "/{id}", "update"),
     ("DELETE", "/{id}", "destroy"),
+)
+# `resource :profile` has no id and routes to the plural ProfilesController.
+_SINGULAR_ACTIONS = (
+    ("POST", "", "create"),
+    ("GET", "/new", "new"),
+    ("GET", "", "show"),
+    ("GET", "/edit", "edit"),
+    ("PATCH", "", "update"),
+    ("PUT", "", "update"),
+    ("DELETE", "", "destroy"),
 )
 
 
@@ -94,32 +111,49 @@ def _bind(project: Project, index: RubyIndex) -> None:
 def _declarations(call: CallRec, index: RubyIndex) -> list[tuple[str, str, str, str, str, str]]:
     """Return `(method, path, mechanism, action, file, class_name)`."""
     code = call.code or ""
-    prefix = _prefix_at(index, call.file, call.line)
+    context = _context_at(index, call.file, call.line)
+    prefix = context.path
     explicit = _EXPLICIT.search(code)
     if call.name in _VERBS and explicit and explicit.group(1) == call.name:
         controller = explicit.group(3) or explicit.group(5)
         action = explicit.group(4) or explicit.group(6)
         path = _join(prefix, _template(explicit.group(2)))
-        file_name, class_name = _controller(controller)
+        # Inside `namespace :api`, `to: "items#show"` names Api::ItemsController.
+        file_name, class_name = _controller(context.module + controller)
         located = _locate(index, file_name, class_name)
         if located is None:
             return []
         return [(call.name.upper(), path, "route_table", action, located, class_name)]
-    if call.name != "resources":
+    symbol = _SYMBOL_VERB.match(code)
+    if call.name in _VERBS and symbol and symbol.group(1) == call.name and context.resource:
+        # `post :propagate` in a `collection`, `member` or `resources` block.
+        action = symbol.group(2)
+        file_name, class_name = _controller(context.resource)
+        located = _locate(index, file_name, class_name)
+        if located is None:
+            return []
+        return [(call.name.upper(), _join(prefix, action), "resource_dsl", action, located, class_name)]
+    if call.name == "resources":
+        match = _RESOURCES.search(code)
+        actions = _ACTIONS
+    elif call.name == "resource":
+        match = _SINGULAR.search(code)
+        actions = _SINGULAR_ACTIONS
+    else:
         return []
-    match = _RESOURCES.search(code)
     if match is None:
         return []
     resource, only, exclude = match.group(1), match.group(2), match.group(3)
     allowed = _names(only) if only is not None else None
     blocked = _names(exclude) if exclude is not None else set()
-    file_name, class_name = _controller(resource)
+    controller = resource if call.name == "resources" else _pluralize(resource)
+    file_name, class_name = _controller(context.module + controller)
     located = _locate(index, file_name, class_name)
     if located is None:
         return []
     found = []
     base = _join(prefix, "/" + resource)
-    for method, suffix, action in _ACTIONS:
+    for method, suffix, action in actions:
         if allowed is not None and action not in allowed:
             continue
         if action in blocked:
@@ -300,30 +334,88 @@ def _bindings(filters: list[Body]) -> list[BindingFact]:
     return []
 
 
-def _prefix_at(index: RubyIndex, file: str, line: int) -> str:
+@dataclass(frozen=True)
+class _Context:
+    """Where a line of `config/routes.rb` sits: its path prefix and controller module.
+
+    Inside a `resources` block, `resource` is that resource's controller, `base` its
+    collection path, and `path` the prefix for what the block declares: the nested
+    `/things/{thing_id}` by default, `base` in `collection`, `base/{id}` in `member`.
+    """
+
+    path: str = ""
+    module: str = ""
+    resource: str | None = None
+    base: str = ""
+
+
+def _context_at(index: RubyIndex, file: str, line: int) -> _Context:
     text = index.files.get(file, "")
+    current = _Context()
     if not text:
-        return ""
+        return current
     depth = 0
-    stack: list[tuple[int, str]] = []
+    stack: list[tuple[int, _Context]] = []
     for number, raw in enumerate(text.splitlines(), start=1):
         if number == line:
-            return "/" + "/".join(part for _depth, part in stack if part)
+            return current
         code = _strip(raw)
-        ns = _NS.search(code)
-        scope = _SCOPE.search(code)
         if _DO.search(code):
             depth += 1
-            if ns:
-                stack.append((depth, ns.group(1)))
-            elif scope:
-                stack.append((depth, scope.group(1).strip("/")))
-        ends = len(_END.findall(code))
-        for _ in range(ends):
+            stack.append((depth, current))
+            current = _child(current, code)
+        elif _OPENER.match(code):
+            # `if ... end` and friends close with `end` too; they change nothing.
+            depth += 1
+            stack.append((depth, current))
+        for _ in range(len(_END.findall(code))):
             depth = max(0, depth - 1)
             while stack and stack[-1][0] > depth:
-                stack.pop()
-    return ""
+                current = stack.pop()[1]
+    return current
+
+
+def _child(context: _Context, code: str) -> _Context:
+    """The context inside the block `code` opens."""
+    ns = _NS.search(code)
+    if ns:
+        return _Context(path=_join(context.path, ns.group(1)), module=context.module + ns.group(1) + "/")
+    member = _MEMBER.match(code)
+    if member and context.resource:
+        path = context.base + "/{id}" if member.group(1) == "member" else context.base
+        return _Context(path=path, module=context.module, resource=context.resource, base=context.base)
+    plural = _RESOURCES.search(code)
+    singular = _SINGULAR.search(code) if plural is None else None
+    if plural or singular:
+        name = (plural or singular).group(1)
+        base = _join(context.path, name)
+        controller = context.module + (name if plural else _pluralize(name))
+        nested = base + "/{" + _singularize(name) + "_id}" if plural else base
+        return _Context(path=nested, module=context.module, resource=controller, base=base)
+    scope_path = _SCOPE.search(code)
+    scope_module = _MODULE.search(code) if re.search(r"\bscope\b", code) else None
+    if scope_path or scope_module:
+        return _Context(
+            path=_join(context.path, scope_path.group(1).strip("/")) if scope_path else context.path,
+            module=context.module + scope_module.group(1).strip("/") + "/" if scope_module else context.module,
+            resource=context.resource,
+            base=context.base,
+        )
+    return context
+
+
+def _singularize(name: str) -> str:
+    if name.endswith("ies"):
+        return name[:-3] + "y"
+    if name.endswith("s") and not name.endswith("ss"):
+        return name[:-1]
+    return name
+
+
+def _pluralize(name: str) -> str:
+    if name.endswith("y") and not name.endswith(("ay", "ey", "oy", "uy")):
+        return name[:-1] + "ies"
+    return name if name.endswith("s") else name + "s"
 
 
 def _template(path: str) -> str:

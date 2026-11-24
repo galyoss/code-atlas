@@ -64,6 +64,8 @@ class FuncInfo:
     params: list[ParamInfo]
     is_method: bool
     module: str
+    # Local name -> the constructor it was assigned from (`svc = Service(session)`).
+    local_types: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -98,6 +100,8 @@ class ModuleInfo:
     functions: list[FuncInfo]
     classes: list[ClassInfo]
     dep_lists: dict[str, list[str]]
+    # Module-level name -> the constructor it was assigned from (`Files = FilesTable()`).
+    instances: dict[str, str] = field(default_factory=dict)
 
 
 def iter_python_files(repo: Path) -> list[Path]:
@@ -111,25 +115,21 @@ def iter_python_files(repo: Path) -> list[Path]:
     return files
 
 
+def _is_package(directory: Path) -> bool:
+    """A regular package, or a namespace subpackage inside one.
+
+    Open WebUI keeps `open_webui/__init__.py` but no `__init__.py` in `models/` or
+    `routers/`. Stopping at `models/` would name both `models/files.py` and
+    `routers/files.py` plain `files`, and one would replace the other in the index.
+    """
+    return (directory / "__init__.py").exists() or (directory.parent / "__init__.py").exists()
+
+
 def _module_qual(repo: Path, path: Path) -> str:
-    rel = path.relative_to(repo)
-    directory = path.parent
-    parts: list[str] = [path.stem]
-    cursor = directory
-    while cursor != repo and cursor != cursor.parent:
-        if not (cursor / "__init__.py").exists() and cursor != directory:
-            break
-        if (cursor / "__init__.py").exists() or cursor == directory and (cursor / "__init__.py").exists():
-            parts.append(cursor.name)
-            cursor = cursor.parent
-            continue
-        break
-    # Walk only while the directory is a package. `directory` itself counts
-    # when it contains __init__.py; the file's parent of a module always does
-    # if it is a package.
+    # Walk up while the directory is a package.
     parts = [path.stem]
     cursor = path.parent
-    while cursor != repo and (cursor / "__init__.py").exists():
+    while cursor != repo and _is_package(cursor):
         parts.append(cursor.name)
         cursor = cursor.parent
     parts.reverse()
@@ -196,6 +196,36 @@ def _annotation(node: ast.AST | None) -> str:
     return ""
 
 
+def _dotted(node: ast.AST | None) -> str:
+    """`Service` or `pkg.Service` for a name or attribute chain; empty for anything else."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        head = _dotted(node.value)
+        return f"{head}.{node.attr}" if head else ""
+    return ""
+
+
+def _annotation_class(node: ast.AST | None) -> str:
+    """The one class an annotation names: `Service`, `Optional[Service]`, `Service | None`,
+    `Annotated[Service, ...]` or `"Service"`. Containers and unions of two classes name none."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        try:
+            return _annotation_class(ast.parse(node.value, mode="eval").body)
+        except SyntaxError:
+            return ""
+    if isinstance(node, ast.Subscript):
+        wrapper = _dotted(node.value).rsplit(".", 1)[-1]
+        if wrapper not in {"Optional", "Annotated"}:
+            return ""
+        inner = node.slice.elts[0] if isinstance(node.slice, ast.Tuple) and node.slice.elts else node.slice
+        return _annotation_class(inner)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        sides = [side for side in (node.left, node.right) if not (isinstance(side, ast.Constant) and side.value is None)]
+        return _annotation_class(sides[0]) if len(sides) == 1 else ""
+    return _dotted(node)
+
+
 def _sqlmodel_table(node: ast.ClassDef) -> bool:
     """SQLModel marks mapped classes with `table=True` in the class keywords."""
     return any(
@@ -235,8 +265,10 @@ class _ModuleParser(ast.NodeVisitor):
         self.functions: list[FuncInfo] = []
         self.classes: list[ClassInfo] = []
         self.dep_lists: dict[str, list[str]] = {}
+        self.instances: dict[str, str] = {}
         self._class_stack: list[str] = []
         self._func_stack: list[str] = []
+        self._func_infos: list[FuncInfo] = []
 
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
@@ -276,7 +308,29 @@ class _ModuleParser(ast.NodeVisitor):
             deps = _depends(node.value)
             if deps:
                 self.dep_lists[targets[0]] = deps
+        if len(targets) == 1:
+            value = node.value.value if isinstance(node.value, ast.Await) else node.value
+            if isinstance(value, ast.Call):
+                self._record_type(targets[0], _dotted(value.func))
         self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if isinstance(node.target, ast.Name):
+            value = node.value.value if isinstance(node.value, ast.Await) else node.value
+            if isinstance(value, ast.Call):
+                self._record_type(node.target.id, _dotted(value.func))
+            else:
+                self._record_type(node.target.id, _annotation_class(node.annotation))
+        self.generic_visit(node)
+
+    def _record_type(self, name: str, constructor: str) -> None:
+        """The first assignment wins; a later rebinding to something else is not tracked."""
+        if not constructor:
+            return
+        if self._func_infos:
+            self._func_infos[-1].local_types.setdefault(name, constructor)
+        elif not self._class_stack:
+            self.instances.setdefault(name, constructor)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._add_func(node, is_async=False)
@@ -315,21 +369,26 @@ class _ModuleParser(ast.NodeVisitor):
                     line=arg.lineno,
                 )
             )
-        self.functions.append(
-            FuncInfo(
-                name=node.name,
-                qualname=qual,
-                file=self.file,
-                line=node.lineno,
-                end_line=node.end_lineno or node.lineno,
-                signature=_signature(self.lines, node),
-                params=params,
-                is_method=is_method,
-                module=self.module,
-            )
+        info = FuncInfo(
+            name=node.name,
+            qualname=qual,
+            file=self.file,
+            line=node.lineno,
+            end_line=node.end_lineno or node.lineno,
+            signature=_signature(self.lines, node),
+            params=params,
+            is_method=is_method,
+            module=self.module,
         )
+        for arg in [*args.args, *args.kwonlyargs]:
+            annotated = _annotation_class(arg.annotation)
+            if annotated and arg.arg not in {"self", "cls"}:
+                info.local_types[arg.arg] = annotated
+        self.functions.append(info)
         self._func_stack.append(node.name)
+        self._func_infos.append(info)
         self.generic_visit(node)
+        self._func_infos.pop()
         self._func_stack.pop()
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
@@ -454,6 +513,60 @@ class SourceIndex:
             return self.resolve_name(src_mod, target_name, _seen | {(module_qual, name)})
         return ("external", f"{src_mod}.{target_name}" if src_mod else target_name)
 
+    def class_named(self, module_qual: str, name: str) -> str | None:
+        """The in-repo class `name` refers to in `module_qual`, or None."""
+        if "." not in name:
+            resolved = self.resolve_name(module_qual, name)
+        else:
+            # `models.FilesTable`: resolve the module alias, then the class in that module.
+            head, attr = name.rsplit(".", 1)
+            mod = self.modules.get(module_qual)
+            imported = mod.imports.get(head) if mod else None
+            target = ".".join(part for part in imported if part) if imported else head
+            resolved = self.resolve_name(target, attr) if target in self.modules else None
+        if resolved is not None and resolved[0] == "class":
+            return resolved[1]
+        return None
+
+    def instance_class(
+        self,
+        module_qual: str,
+        name: str,
+        func: FuncInfo | None = None,
+        _seen: frozenset[tuple[str, str]] = frozenset(),
+    ) -> str | None:
+        """The in-repo class `name` is an instance of: a local or parameter of `func`,
+        or a module-level instance, possibly imported from another module."""
+        if func is not None and name in func.local_types:
+            return self.class_named(module_qual, func.local_types[name])
+        if (module_qual, name) in _seen:
+            return None
+        mod = self.modules.get(module_qual)
+        if mod is None:
+            return None
+        if name in mod.instances:
+            return self.class_named(module_qual, mod.instances[name])
+        imported = mod.imports.get(name)
+        if imported is not None and imported[0] in self.modules and imported[1]:
+            return self.instance_class(imported[0], imported[1], None, _seen | {(module_qual, name)})
+        return None
+
+    def method_of(self, class_qual: str, name: str, _depth: int = 0) -> FuncInfo | None:
+        """`name` defined on the class or inherited from an in-repo base."""
+        func = self.functions_by_qual.get(f"{class_qual}.{name}")
+        if func is not None:
+            return func
+        cls = self.classes_by_qual.get(class_qual)
+        if cls is None or _depth >= 4:
+            return None
+        for base in cls.bases:
+            base_qual = self.class_named(cls.module, base)
+            if base_qual is not None and base_qual != class_qual:
+                found = self.method_of(base_qual, name, _depth + 1)
+                if found is not None:
+                    return found
+        return None
+
     def dependency_targets(self, module_qual: str, expr_or_name: str) -> list[str]:
         """Resolve a dependencies= expression to function qualnames."""
         text = expr_or_name.strip()
@@ -566,6 +679,7 @@ def load_index(repo: Path) -> SourceIndex:
             functions=parser.functions,
             classes=parser.classes,
             dep_lists=parser.dep_lists,
+            instances=parser.instances,
         )
         index.modules[qual] = info
         index.file_text[rel] = text

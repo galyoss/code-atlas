@@ -114,7 +114,7 @@ def build_calls(
         return [], "yes"
     if body.qualname in stack:
         return [], "no"
-    calls = [call for call in project.overlay.by_caller.get(body.full_name, []) if call.name and not call.name.startswith("<")]
+    calls = [call for call in project.overlay.calls_with_blocks(body.full_name) if call.name and not call.name.startswith("<")]
     if not calls:
         return [], "yes"
     if depth > budget.limits.max_call_depth:
