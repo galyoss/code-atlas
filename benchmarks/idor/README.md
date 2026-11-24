@@ -35,19 +35,19 @@ On macOS the Joern 4.0.684 launch scripts call `greadlink`. Install coreutils, o
 
 ## Static results on 2026-11-24
 
-Aegra and Langflow graphs were cached on 2026-11-17. The rest were scanned on 2026-11-24 with `main` + galyoss/code-atlas#9 (scanner `51794a56d859`).
+Vulnerable routes reachable, counting known gaps. `#9` is `main` + galyoss/code-atlas#9 (scanner `51794a56d859`); `#12` adds galyoss/code-atlas#12.
 
-| Repository | Vulnerable routes reachable | Why not |
-|---|---|---|
-| Aegra | 3 of 3 | |
-| Langflow | 13 of 14 | image download reads file storage (known gap) |
-| Open WebUI | 0 of 10 | 0 data accesses in 345 routes: `Files.get_file_by_id` is a method on a module-level instance (`Files = FilesTable()`) and is recorded `external` |
-| PraisonAI platform | 0 of 3 | `AgentService(session).get(agent_id)` resolves the class but records `.get` as `external`, so `session.get(Agent, …)` is never reached |
-| Chatwoot | route not found | 9 routes found; nothing inside `namespace :api` / `scope module:` |
-| Huginn | route not found | standard resource routes only; `collection` / `member` routes such as `POST /agents/propagate` are missing, and no ActiveRecord data accesses |
-| Fat Free CRM | route not found | known gap: Rails adapter not picked |
-| Khoj | 0 of 1 | known gap: Django ORM |
+| Repository | #9 | #12 | What blocks the rest |
+|---|---|---|---|
+| Aegra | 3 of 3 | 3 of 3 | |
+| Langflow | 13 of 14 | 13 of 14 | image download reads file storage (known gap) |
+| Open WebUI | 0 of 10 | 5 of 10 | `process/files/batch` has no data access; 4 routes are vector-store gaps. With #9 alone, methods on `Files = FilesTable()` were `external` and namespace subpackages collided |
+| PraisonAI platform | 0 of 3 | 3 of 3 | With #9 alone, `AgentService(session).get(...)` was `external` |
+| Chatwoot | route not found | 0 of 7 | routes are found now; the Rails reader does not see association loads such as `Current.account.macros.find(...)` |
+| Huginn | route not found | 0 of 1 | route found now; no ActiveRecord data accesses |
+| Fat Free CRM | route not found | route not found | known gap: Rails adapter not picked |
+| Khoj | 0 of 1 | 0 of 1 | known gap: Django ORM |
 
 On `main` (scanner `20221709d4c7`), Aegra and Langflow reach 0 of 15; Langflow 1.9.1 was not cached for that scanner.
 
-Totals without known gaps: 16 of 33 vulnerable routes reachable, all of them on Aegra and Langflow.
+Totals without known gaps: 16 of 33 with #9, 24 of 33 with #12.
