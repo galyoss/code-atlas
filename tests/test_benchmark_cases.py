@@ -46,3 +46,51 @@ def test_method_and_segments_must_match():
 def test_exact_path_beats_suffix_and_duplicates_are_all_returned():
     document = _doc(("GET", "/api/v1/monitor/builds"), ("GET", "/monitor/builds"), ("GET", "/monitor/builds"))
     assert [r["id"] for r in run.find_routes(document, "GET /monitor/builds")] == ["r1", "r2"]
+
+
+def test_rate_limits_are_retried_and_quota_stops_the_run(monkeypatch):
+    import email.message
+    import urllib.error
+
+    usage = run._Usage()
+    replies = []
+
+    def error(code, body, retry_after=None):
+        headers = email.message.Message()
+        if retry_after:
+            headers["retry-after"] = retry_after
+        return urllib.error.HTTPError("u", code, "x", headers, __import__("io").BytesIO(body.encode()))
+
+    class Opener:
+        def open(self, request, timeout):
+            reply = replies.pop(0)
+            if isinstance(reply, Exception):
+                raise reply
+            return __import__("io").BytesIO(reply.encode())
+
+    monkeypatch.setattr(run, "_opener", lambda: Opener())
+    monkeypatch.setattr(run.time, "sleep", lambda seconds: None)
+    ok = json.dumps({"usage": {"prompt_tokens": 10, "completion_tokens": 2, "prompt_tokens_details": {"cached_tokens": 4}}})
+    replies[:] = [error(429, "rate limit", "1"), ok]
+    urlopen = run.patient_urlopen(usage)
+    assert urlopen("request", 5).read() == ok.encode()
+    assert usage.public() == {
+        "calls": 1, "promptTokens": 10, "cachedPromptTokens": 4, "completionTokens": 2, "quotaExhausted": False
+    }
+    replies[:] = [error(429, '{"error": {"code": "insufficient_quota"}}')]
+    try:
+        urlopen("request", 5)
+    except urllib.error.HTTPError:
+        pass
+    assert usage.quota_exhausted and replies == []
+
+
+def test_unreviewed_routes_are_left_out_of_the_metrics():
+    rows = [
+        {"vulnerable": True, "found": True, "matches": [{"eligible": ["a"]}], "finding": True},
+        {"vulnerable": True, "found": True, "matches": [{"eligible": ["a"]}], "notReviewed": "quota"},
+        {"vulnerable": False, "found": True, "matches": [{"eligible": []}], "finding": False},
+    ]
+    summary = run._score(rows, review=True)
+    assert summary["notReviewed"] == 1
+    assert (summary["truePositives"], summary["falseNegatives"], summary["recall"], summary["precision"]) == (1, 0, 1.0, 1.0)
