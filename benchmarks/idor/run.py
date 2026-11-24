@@ -156,7 +156,10 @@ def find_routes(document: dict, spec: str) -> list[dict]:
     """Routes for `spec`, ignoring parameter names and a mount prefix the scanner may not record.
 
     An exact path wins. Otherwise a route matches when one path is a segment-aligned
-    suffix of the other; the longest such match wins, and ties are all returned.
+    suffix of the other, and the longest such match wins. Among tied routes, those
+    whose handler names the unmatched prefix win: Open WebUI's graph has eight
+    `/{id}/update` routes, and only `routers.folders` names `/api/v1/folders`. Remaining
+    ties are all returned.
     """
     method, path = spec.split(" ", 1)
     want = _segments(path)
@@ -173,7 +176,15 @@ def find_routes(document: dict, spec: str) -> list[dict]:
     if not scored:
         return []
     best = max(score for score, _ in scored)
-    return [route for score, route in scored if score == best]
+    tied = [route for score, route in scored if score == best]
+    unmatched = [segment.lower() for segment in want[: len(want) - best] if segment != "{}"]
+
+    def named(route: dict) -> int:
+        handler = (route.get("handler") or {}).get("qualifiedName") or ""
+        return sum(segment in handler.lower() for segment in unmatched)
+
+    top = max((named(route) for route in tied), default=0)
+    return [route for route in tied if named(route) == top] if top else tied
 
 
 def _context_document(document: dict, route: dict) -> dict:
@@ -267,7 +278,11 @@ def main() -> None:
     parser.add_argument("--only", help="comma-separated target ids")
     parser.add_argument("--label", default="", help="suffix for the report file")
     parser.add_argument("--fingerprint", help="reuse graphs cached by an earlier scanner version")
+    parser.add_argument("--rescore", type=Path, help="apply the current route matching to a finished report")
     args = parser.parse_args()
+    if args.rescore:
+        print(f"\nreport: {rescore(args.rescore)}")
+        return
 
     cases = json.loads(CASES.read_text(encoding="utf-8"))
     fingerprint = args.fingerprint or scanner_fingerprint()
@@ -330,6 +345,39 @@ def main() -> None:
     out.with_suffix(".partial.json").unlink(missing_ok=True)
     print(render(report))
     print(f"\nreport: {out}")
+
+
+def rescore(path: Path) -> Path:
+    """Apply the current route matching to a finished report without calling the model.
+
+    Every matched route was reviewed on its own, so dropping a match that no longer
+    matches leaves the other votes valid.
+    """
+    report = json.loads(path.read_text(encoding="utf-8"))
+    graphs: dict[str, dict] = {}
+    for row in report["rows"]:
+        if len(row.get("matches", [])) < 2:
+            continue
+        target = row["target"]
+        if target not in graphs:
+            graph = WORK / "graphs" / f"{target}-{report['scannerFingerprint']}.json"
+            graphs[target] = json.loads(graph.read_text(encoding="utf-8"))
+        keep = {route["id"] for route in find_routes(graphs[target], row["route"])}
+        row["matches"] = [match for match in row["matches"] if match["routeId"] in keep]
+        if "finding" in row:
+            row["finding"] = any(match.get("findings") for match in row["matches"])
+    args = argparse.Namespace(review=report.get("model") is not None, model=report.get("model"),
+                              agents=report.get("agents"), threshold=report.get("threshold"))
+    usage = _Usage()
+    for key, attr in (("calls", "calls"), ("promptTokens", "prompt"), ("cachedPromptTokens", "cached"),
+                      ("completionTokens", "completion"), ("quotaExhausted", "quota_exhausted")):
+        setattr(usage, attr, (report.get("usage") or {}).get(key, getattr(usage, attr)))
+    rescored = summarize(report["rows"], report["skippedTargets"], args, report["scannerFingerprint"], usage)
+    rescored["generatedAt"] = report["generatedAt"]
+    out = path.with_name(path.stem + "-rescored.json")
+    out.write_text(json.dumps(rescored, indent=2), encoding="utf-8")
+    print(render(rescored))
+    return out
 
 
 def _score(rows: list[dict], review: bool) -> dict:

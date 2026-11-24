@@ -94,3 +94,14 @@ def test_unreviewed_routes_are_left_out_of_the_metrics():
     summary = run._score(rows, review=True)
     assert summary["notReviewed"] == 1
     assert (summary["truePositives"], summary["falseNegatives"], summary["recall"], summary["precision"]) == (1, 0, 1.0, 1.0)
+
+
+def test_handler_module_breaks_ties_when_the_mount_prefix_is_missing():
+    document = {"routes": [
+        {"id": "users", "httpMethod": "POST", "pathTemplate": "/{user_id}/update",
+         "handler": {"qualifiedName": "open_webui.routers.users.update_user_by_id"}},
+        {"id": "folders", "httpMethod": "POST", "pathTemplate": "/{id}/update",
+         "handler": {"qualifiedName": "open_webui.routers.folders.update_folder_by_id"}},
+    ]}
+    assert [r["id"] for r in run.find_routes(document, "POST /api/v1/folders/{id}/update")] == ["folders"]
+    assert [r["id"] for r in run.find_routes(document, "POST /api/v1/notes/{id}/update")] == ["users", "folders"]
