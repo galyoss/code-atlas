@@ -2,10 +2,11 @@
 
 Each advisory names routes on a vulnerable revision and a fixed one. The static
 stage is free: it scans every target, finds each advisory route in the graph, and
-asks the review runner, with a scripted model, whether a present vote on that route
-would stand at all. The review stage calls the configured model on those routes
-only and scores findings: a finding on a vulnerable route is a true positive, a
-finding on a fixed route a false positive.
+asks the gate whether a present vote citing each of the route's data accesses
+would stand. The review stage runs the hunter and skeptic agents on those routes
+only (every route stays visible to their graph tools) and scores findings: a
+finding on a vulnerable route is a true positive, a finding on a fixed route a
+false positive. The report records token usage and, for known models, its cost.
 
     python benchmarks/idor/run.py                       # static stage
     python benchmarks/idor/run.py --review --model gpt-4.1
@@ -20,19 +21,19 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import io
 import json
 import re
 import sys
 import time
-import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from review.model import ChatCompletionsClient, _opener  # noqa: E402
+from review.gate import present_blocker  # noqa: E402
+from review.graph_index import GraphIndex  # noqa: E402
+from review.model import chat_model  # noqa: E402
 from review.registry import registered_checks  # noqa: E402
 from review.runner import review_graph  # noqa: E402
 from scan_api.access import clone_at  # noqa: E402
@@ -42,73 +43,36 @@ from scanner.scan import export_repository  # noqa: E402
 WORK = ROOT / ".work" / "idor-benchmark"
 CASES = Path(__file__).with_name("cases.json")
 _PARAM = re.compile(r"\{[^}/]*\}|:[A-Za-z_][A-Za-z0-9_]*")
-_RETRIES = 8
+# USD per million tokens: input, cached input, output. Unknown models get no cost estimate.
+PRICES = {"gpt-4.1": (2.00, 0.50, 8.00), "gpt-4.1-mini": (0.40, 0.10, 1.60)}
 
 
 class _Usage:
-    """Token usage read from every model response, and whether the account ran out of credit."""
+    """Token usage summed over every review run, and whether the provider refused further requests."""
 
-    def __init__(self) -> None:
-        self.calls = self.prompt = self.cached = self.completion = 0
+    def __init__(self, model: str) -> None:
+        self.model = model
+        self.prompt = self.cached = self.completion = 0
         self.quota_exhausted = False
 
-    def add(self, body: bytes) -> None:
-        try:
-            usage = json.loads(body.decode("utf-8")).get("usage") or {}
-        except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
-            return
-        self.calls += 1
-        self.prompt += int(usage.get("prompt_tokens") or 0)
-        self.completion += int(usage.get("completion_tokens") or 0)
-        self.cached += int((usage.get("prompt_tokens_details") or {}).get("cached_tokens") or 0)
+    def add(self, usage: dict) -> None:
+        for totals in usage.values():
+            self.prompt += totals.get("inputTokens", 0)
+            self.cached += totals.get("cachedInputTokens", 0)
+            self.completion += totals.get("outputTokens", 0)
 
     def public(self) -> dict:
-        return {
-            "calls": self.calls,
+        result = {
             "promptTokens": self.prompt,
             "cachedPromptTokens": self.cached,
             "completionTokens": self.completion,
             "quotaExhausted": self.quota_exhausted,
         }
-
-
-class _Buffered(io.BytesIO):
-    """A read response handed back to the client, which reads it inside `with`."""
-
-
-def patient_urlopen(usage: _Usage):
-    """urlopen for ChatCompletionsClient that waits out rate limits and records token usage.
-
-    A 429 or 5xx is retried after `retry-after` or an exponential wait. An
-    `insufficient_quota` 429 or a request larger than the rate limit is not retried;
-    quota exhaustion is recorded so the run stops sending.
-    """
-
-    def urlopen(request, timeout):
-        for attempt in range(_RETRIES):
-            try:
-                with _opener().open(request, timeout=timeout) as response:
-                    body = response.read()
-                usage.add(body)
-                return _Buffered(body)
-            except urllib.error.HTTPError as exc:
-                detail = exc.read().decode("utf-8", "replace") if exc.fp else ""
-                if "insufficient_quota" in detail:
-                    usage.quota_exhausted = True
-                    raise
-                if "Request too large" in detail or (exc.code != 429 and exc.code < 500) or attempt == _RETRIES - 1:
-                    raise
-                retry_after = exc.headers.get("retry-after") if exc.headers else None
-                try:
-                    wait = float(retry_after) if retry_after else 0.0
-                except ValueError:
-                    wait = 0.0
-                wait = max(wait, min(60.0, 5.0 * 2**attempt))
-                print(f"    {exc.code}; retrying in {wait:.0f}s", flush=True)
-                time.sleep(wait)
-        raise RuntimeError("unreachable")
-
-    return urlopen
+        price = PRICES.get(self.model)
+        if price is not None:
+            fresh = self.prompt - self.cached
+            result["estimatedUSD"] = round((fresh * price[0] + self.cached * price[1] + self.completion * price[2]) / 1e6, 2)
+        return result
 
 
 def scanner_fingerprint() -> str:
@@ -152,15 +116,25 @@ def _segments(path: str) -> list[str]:
     return [_PARAM.sub("{}", part) for part in path.strip("/").split("/") if part]
 
 
-def find_routes(document: dict, spec: str) -> list[dict]:
+def route_spec(entry) -> tuple[str, str | None]:
+    """A case route: "METHOD /path", or {"route": ..., "handlerFile": ...} when the path alone is ambiguous."""
+    if isinstance(entry, dict):
+        return entry["route"], entry.get("handlerFile")
+    return entry, None
+
+
+def find_routes(document: dict, spec: str, handler_file: str | None = None) -> list[dict]:
     """Routes for `spec`, ignoring parameter names and a mount prefix the scanner may not record.
 
     An exact path wins. Otherwise a route matches when one path is a segment-aligned
     suffix of the other; the longest such match wins, and ties are all returned.
+    `handler_file` keeps only routes whose handler is in a file ending with it.
     """
     method, path = spec.split(" ", 1)
     want = _segments(path)
     candidates = [route for route in document["routes"] if route.get("httpMethod") == method]
+    if handler_file:
+        candidates = [route for route in candidates if _handler_file(route).endswith(handler_file)]
     exact = [route for route in candidates if _segments(route.get("pathTemplate", "")) == want]
     if exact:
         return exact
@@ -176,76 +150,22 @@ def find_routes(document: dict, spec: str) -> list[dict]:
     return [route for score, route in scored if score == best]
 
 
-def _context_document(document: dict, route: dict) -> dict:
-    """The route and the routes it links: enough for the runner to build the same prompt."""
-    linked = {link.get("routeId") for link in route.get("relatedRoutes") or [] if isinstance(link, dict)}
-    routes = [route] + [other for other in document["routes"] if other.get("id") in linked and other is not route]
-    return {**document, "routes": routes}
+def _handler_file(route: dict) -> str:
+    handler = route.get("handler") if isinstance(route.get("handler"), dict) else {}
+    return str((handler.get("range") or {}).get("file") or "")
 
 
-class _Scripted:
-    """Answers present for one route, citing one access; every other route is inconclusive."""
-
-    def __init__(self, route_id: str, access_id: str | None):
-        self.route_id, self.access_id, self.prompt_chars = route_id, access_id, 0
-
-    def complete(self, *, model, system, user):
-        route_id = json.loads(user)["route"]["id"]
-        if route_id != self.route_id:
-            return json.dumps({"routeId": route_id, "verdict": "inconclusive", "reason": "context"})
-        self.prompt_chars = len(system) + len(user)
-        reply = {"routeId": route_id, "verdict": "present", "reason": "probe"}
-        if self.access_id is not None:
-            reply["dataAccessId"] = self.access_id
-        return json.dumps(reply)
-
-
-class _OnlyRoute:
-    """Sends the target route to the model; every other route is inconclusive without a call."""
-
-    def __init__(self, inner, route_id: str):
-        self.inner, self.route_id, self.seconds = inner, route_id, []
-
-    def complete(self, *, model, system, user):
-        route_id = json.loads(user)["route"]["id"]
-        if route_id != self.route_id:
-            return json.dumps({"routeId": route_id, "verdict": "inconclusive", "reason": "context"})
-        started = time.time()
-        try:
-            return self.inner.complete(model=model, system=system, user=user)
-        finally:
-            self.seconds.append(round(time.time() - started, 1))
-
-
-def _review(document: dict, route: dict, client, args) -> tuple[list[dict], list[dict]]:
-    result = review_graph(
-        _context_document(document, route),
-        model=args.model,
-        agent_count=args.agents,
-        agreement_threshold=args.threshold,
-        client=client,
-        checks=(next(iter(registered_checks())),),
-    )
-    votes = [vote for vote in result.votes if vote["routeId"] == route["id"]]
-    findings = [finding for finding in result.findings if finding["routeId"] == route["id"]]
-    return votes, findings
-
-
-def static_row(document: dict, route: dict, args) -> dict:
+def static_row(document: dict, route: dict, index: GraphIndex) -> dict:
     """Whether a present vote on `route` could stand, citing each of its accesses in turn."""
+    check = next(iter(registered_checks()))
     accesses = [access.get("id") for access in route.get("dataAccesses") or [] if isinstance(access, dict)]
-    probe = argparse.Namespace(model="probe", agents=1, threshold=1)
-    eligible, blockers, prompt_chars = [], {}, 0
-    for access_id in accesses or [None]:
-        client = _Scripted(route["id"], access_id)
-        votes, _ = _review(document, route, client, probe)
-        prompt_chars = max(prompt_chars, client.prompt_chars)
-        vote = votes[0] if votes else {"verdict": "inconclusive", "reason": "no vote"}
-        if vote["verdict"] == "present":
-            if access_id is not None:
-                eligible.append(access_id)
+    eligible, blockers = [], {}
+    for access_id in accesses:
+        reason = present_blocker(check, route, access_id)
+        if reason is None:
+            eligible.append(access_id)
         else:
-            blockers[vote["reason"]] = blockers.get(vote["reason"], 0) + 1
+            blockers[reason] = blockers.get(reason, 0) + 1
     return {
         "routeId": route["id"],
         "path": route.get("pathTemplate"),
@@ -253,8 +173,45 @@ def static_row(document: dict, route: dict, args) -> dict:
         "accesses": len(accesses),
         "eligible": eligible,
         "blockers": blockers,
-        "promptChars": prompt_chars,
+        # What an agent starts from; tool calls add to it.
+        "promptChars": len(json.dumps(index.opening_packet(route["id"]))),
     }
+
+
+def review_target(document: dict, matches: dict[str, list[dict]], model, args, usage: _Usage) -> dict[str, dict]:
+    """One review run over every advisory route of a target. Returns votes and findings per route id."""
+    route_ids = sorted({route["id"] for routes in matches.values() for route in routes})
+    started = time.time()
+    result = review_graph(
+        document,
+        model=args.model,
+        agent_count=args.agents,
+        agreement_threshold=args.threshold,
+        chat_model=model,
+        checks=(next(iter(registered_checks())),),
+        route_ids=route_ids,
+        max_concurrency=args.concurrency,
+    )
+    print(f"  reviewed {len(route_ids)} routes in {time.time() - started:.0f}s", flush=True)
+    usage.add(result.usage)
+    status = {entry["routeId"]: entry["status"] for entry in result.coverage.get("ledger", [])}
+    if "not_reviewed" in status.values():
+        usage.quota_exhausted = True
+    per_route = {}
+    for route_id in route_ids:
+        per_route[route_id] = {
+            "status": status.get(route_id),
+            "votes": [_public_vote(vote) for vote in result.votes if vote["routeId"] == route_id],
+            "findings": [finding for finding in result.findings if finding["routeId"] == route_id],
+        }
+    return per_route
+
+
+def _public_vote(vote: dict) -> dict:
+    kept = {key: vote[key] for key in ("role", "verdict", "reason", "dataAccessId", "modelVerdict", "attempts") if key in vote}
+    kept["toolCalls"] = len(vote.get("trail") or [])
+    kept["trail"] = vote.get("trail") or []
+    return kept
 
 
 def main() -> None:
@@ -263,7 +220,7 @@ def main() -> None:
     parser.add_argument("--model", default="gpt-4.1")
     parser.add_argument("--agents", type=int, default=2)
     parser.add_argument("--threshold", type=int, default=2)
-    parser.add_argument("--timeout", type=float, default=60, help="seconds per model call")
+    parser.add_argument("--concurrency", type=int, default=6, help="agent runs in flight")
     parser.add_argument("--only", help="comma-separated target ids")
     parser.add_argument("--label", default="", help="suffix for the report file")
     parser.add_argument("--fingerprint", help="reuse graphs cached by an earlier scanner version")
@@ -273,8 +230,8 @@ def main() -> None:
     fingerprint = args.fingerprint or scanner_fingerprint()
     only = set(args.only.split(",")) if args.only else None
     targets = [target for target in cases["targets"] if only is None or target["id"] in only]
-    usage = _Usage()
-    model = ChatCompletionsClient(timeout=args.timeout, urlopen=patient_urlopen(usage)) if args.review else None
+    usage = _Usage(args.model)
+    model = chat_model(args.model) if args.review else None
     rows, skipped = [], {}
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out = WORK / "reports" / f"{stamp}{'-' + args.label if args.label else ''}.json"
@@ -286,6 +243,8 @@ def main() -> None:
             print(f"  {reason}", flush=True)
             skipped[target["id"]] = reason
             continue
+        index = GraphIndex(document)
+        target_rows, matches = [], {}
         for advisory in cases["advisories"]:
             if target["id"] in advisory["vulnerable"]:
                 vulnerable = True
@@ -293,34 +252,40 @@ def main() -> None:
                 vulnerable = False
             else:
                 continue
-            for spec in advisory["routes"]:
-                matches = find_routes(document, spec)
-                row = {
-                    "target": target["id"],
-                    "advisory": advisory["id"],
-                    "route": spec,
-                    "vulnerable": vulnerable,
-                    "gap": "gap" in advisory,
-                    "found": bool(matches),
-                    "matches": [static_row(document, route, args) for route in matches],
-                }
-                if args.review and matches and usage.quota_exhausted:
-                    row["notReviewed"] = "The model account ran out of credit before this route."
-                elif args.review and matches:
-                    print(f"  reviewing {spec}", flush=True)
+            for entry in advisory["routes"]:
+                spec, handler_file = route_spec(entry)
+                found = find_routes(document, spec, handler_file)
+                matches[spec] = found
+                target_rows.append(
+                    {
+                        "target": target["id"],
+                        "advisory": advisory["id"],
+                        "route": spec,
+                        "vulnerable": vulnerable,
+                        "gap": "gap" in advisory,
+                        "found": bool(found),
+                        "matches": [static_row(document, route, index) for route in found],
+                    }
+                )
+        if args.review and any(matches.values()):
+            if usage.quota_exhausted:
+                for row in target_rows:
+                    if row["found"]:
+                        row["notReviewed"] = "The model account ran out of credit before this route."
+            else:
+                reviewed = review_target(document, matches, model, args, usage)
+                for row in target_rows:
+                    if not row["found"]:
+                        continue
+                    if any(reviewed[m["routeId"]]["status"] == "not_reviewed" for m in row["matches"]):
+                        row["notReviewed"] = "The model account ran out of credit before this route."
+                        continue
                     row["finding"] = False
                     for match in row["matches"]:
-                        route = next(item for item in matches if item["id"] == match["routeId"])
-                        client = _OnlyRoute(model, route["id"])
-                        votes, findings = _review(document, route, client, args)
-                        match["votes"] = [
-                            {key: vote[key] for key in ("role", "verdict", "reason", "dataAccessId") if key in vote}
-                            for vote in votes
-                        ]
-                        match["findings"] = findings
-                        match["callSeconds"] = client.seconds
-                        row["finding"] = row["finding"] or bool(findings)
-                rows.append(row)
+                        outcome = reviewed[match["routeId"]]
+                        match.update(votes=outcome["votes"], findings=outcome["findings"], status=outcome["status"])
+                        row["finding"] = row["finding"] or bool(outcome["findings"])
+        rows.extend(target_rows)
         # Keep what a long paid run has done so far.
         partial = summarize(rows, skipped, args, fingerprint, usage)
         out.with_suffix(".partial.json").write_text(json.dumps(partial, indent=2), encoding="utf-8")

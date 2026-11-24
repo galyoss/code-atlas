@@ -20,7 +20,8 @@ def test_every_advisory_names_known_targets_and_parseable_routes():
     for advisory in CASES["advisories"]:
         assert advisory["vulnerable"], advisory["id"]
         assert set(advisory["vulnerable"] + advisory["fixed"]) <= set(ids), advisory["id"]
-        for spec in advisory["routes"]:
+        for entry in advisory["routes"]:
+            spec, _handler_file = run.route_spec(entry)
             method, path = spec.split(" ", 1)
             assert method in {"GET", "POST", "PUT", "PATCH", "DELETE"} and path.startswith("/"), spec
 
@@ -48,41 +49,14 @@ def test_exact_path_beats_suffix_and_duplicates_are_all_returned():
     assert [r["id"] for r in run.find_routes(document, "GET /monitor/builds")] == ["r1", "r2"]
 
 
-def test_rate_limits_are_retried_and_quota_stops_the_run(monkeypatch):
-    import email.message
-    import urllib.error
-
-    usage = run._Usage()
-    replies = []
-
-    def error(code, body, retry_after=None):
-        headers = email.message.Message()
-        if retry_after:
-            headers["retry-after"] = retry_after
-        return urllib.error.HTTPError("u", code, "x", headers, __import__("io").BytesIO(body.encode()))
-
-    class Opener:
-        def open(self, request, timeout):
-            reply = replies.pop(0)
-            if isinstance(reply, Exception):
-                raise reply
-            return __import__("io").BytesIO(reply.encode())
-
-    monkeypatch.setattr(run, "_opener", lambda: Opener())
-    monkeypatch.setattr(run.time, "sleep", lambda seconds: None)
-    ok = json.dumps({"usage": {"prompt_tokens": 10, "completion_tokens": 2, "prompt_tokens_details": {"cached_tokens": 4}}})
-    replies[:] = [error(429, "rate limit", "1"), ok]
-    urlopen = run.patient_urlopen(usage)
-    assert urlopen("request", 5).read() == ok.encode()
-    assert usage.public() == {
-        "calls": 1, "promptTokens": 10, "cachedPromptTokens": 4, "completionTokens": 2, "quotaExhausted": False
-    }
-    replies[:] = [error(429, '{"error": {"code": "insufficient_quota"}}')]
-    try:
-        urlopen("request", 5)
-    except urllib.error.HTTPError:
-        pass
-    assert usage.quota_exhausted and replies == []
+def test_usage_sums_runs_and_prices_known_models():
+    usage = run._Usage("gpt-4.1")
+    usage.add({"gpt-4.1-2025-04-14": {"inputTokens": 1_000_000, "cachedInputTokens": 400_000, "outputTokens": 10_000}})
+    usage.add({"gpt-4.1-2025-04-14": {"inputTokens": 500_000, "cachedInputTokens": 0, "outputTokens": 0}})
+    public = usage.public()
+    assert public["promptTokens"] == 1_500_000 and public["cachedPromptTokens"] == 400_000
+    assert public["estimatedUSD"] == round((1_100_000 * 2.0 + 400_000 * 0.5 + 10_000 * 8.0) / 1e6, 2)
+    assert "estimatedUSD" not in run._Usage("some-other-model").public()
 
 
 def test_unreviewed_routes_are_left_out_of_the_metrics():
@@ -94,3 +68,15 @@ def test_unreviewed_routes_are_left_out_of_the_metrics():
     summary = run._score(rows, review=True)
     assert summary["notReviewed"] == 1
     assert (summary["truePositives"], summary["falseNegatives"], summary["recall"], summary["precision"]) == (1, 0, 1.0, 1.0)
+
+
+def test_a_handler_file_settles_an_ambiguous_path():
+    document = {
+        "routes": [
+            {"id": "r_audio", "httpMethod": "POST", "pathTemplate": "/{id}/update", "handler": {"range": {"file": "app/routers/audio.py"}}},
+            {"id": "r_folders", "httpMethod": "POST", "pathTemplate": "/{id}/update", "handler": {"range": {"file": "app/routers/folders.py"}}},
+        ]
+    }
+    assert [r["id"] for r in run.find_routes(document, "POST /api/v1/folders/{id}/update")] == ["r_audio", "r_folders"]
+    spec, handler_file = run.route_spec({"route": "POST /api/v1/folders/{id}/update", "handlerFile": "routers/folders.py"})
+    assert [r["id"] for r in run.find_routes(document, spec, handler_file)] == ["r_folders"]

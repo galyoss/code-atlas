@@ -121,7 +121,7 @@
       "vulnerable": ["open-webui-v0.9.4"],
       "fixed": ["open-webui-v0.9.5"],
       "routes": [
-        "POST /api/v1/folders/{id}/update",
+        {"route": "POST /api/v1/folders/{id}/update", "handlerFile": "routers/folders.py"},
         "POST /api/v1/knowledge/{id}/file/add"
       ]
     },
