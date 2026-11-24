@@ -210,6 +210,8 @@ python3 -m pytest
 
 The pinned check is aegra tag `v0.11.0` at `46055c0b9adffe51fb168974f79dfadaa6edd612`. It compares `inPredicate`, auth `kind`, and `bindsObjectToCaller` for `POST /threads/{thread_id}/runs` and `GET /threads/{thread_id}`.
 
+[`benchmarks/idor`](benchmarks/idor/README.md) scores IDOR findings on published advisories across FastAPI and Rails repositories, each on a vulnerable and a fixed revision.
+
 ## Scan API
 
 `scan-api` is a FastAPI app: `POST /scans`, `GET /scans/{id}`, `GET /scans/{id}/graph`, and `GET /health`. It clones the requested GitHub revision and calls `scanner.scan.export_repository`. After a schema 1.0.0 graph exists, the checkout is deleted and `review` runs each registered check once per route. A check is a hunter prompt and a skeptic prompt. v1 registers IDOR only. The runner does not name vulnerabilities; a later check is another pair and another pass.
