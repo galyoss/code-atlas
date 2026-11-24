@@ -8,7 +8,6 @@ import threading
 import traceback
 from pathlib import Path
 
-from review.model import ChatCompletionsClient
 from review.runner import review_graph
 
 from scanner.joern_runner import INSTALL, JoernNotFound, find_home
@@ -18,7 +17,7 @@ from scan_api.access import AccessError, Revision, clone_at, parse_github_url, r
 from scan_api.store import Store, new_scan_id
 
 _FIELDS = {"repositoryUrl", "revision", "model", "agentCount", "agreementThreshold"}
-_COMPLETE = "Every route has a full vote set."
+_COMPLETE = "Every route was reviewed or has no data access to review."
 _INCOMPLETE = "Review did not finish a full vote set. The code graph is available."
 _REVIEW_FAILED = "Review failed before finishing. The code graph is available."
 
@@ -43,7 +42,8 @@ class ScanService:
         self._clone = clone
         self._export = export
         self._joern_home = joern_home
-        self._model_client = model_client if model_client is not None else ChatCompletionsClient()
+        # A LangChain chat model or a `model name -> chat model` factory; None reads REVIEW_MODEL_*.
+        self._model_client = model_client
         self._queue: queue.Queue[str] = queue.Queue()
         self._thread: threading.Thread | None = None
 
@@ -130,7 +130,7 @@ class ScanService:
                 model=job["model"],
                 agent_count=job["agentCount"],
                 agreement_threshold=job["agreementThreshold"],
-                client=self._model_client,
+                chat_model=self._model_client,
             )
         except Exception as exc:
             self.store.update(
@@ -153,6 +153,8 @@ class ScanService:
             graph=document,
             votes=result.votes,
             findings=result.findings,
+            coverage=result.coverage,
+            usage=result.usage,
         )
         print(f"scan {scan_id} {status}", flush=True)
 
@@ -230,6 +232,8 @@ def public_scan(job: dict) -> dict:
         "graph": graph,
         "votes": job.get("votes") if isinstance(job.get("votes"), list) else [],
         "findings": job.get("findings") if isinstance(job.get("findings"), list) else [],
+        "coverage": job.get("coverage") if isinstance(job.get("coverage"), dict) else {},
+        "usage": job.get("usage") if isinstance(job.get("usage"), dict) else {},
     }
 
 

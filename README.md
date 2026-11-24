@@ -216,9 +216,32 @@ The pinned check is aegra tag `v0.11.0` at `46055c0b9adffe51fb168974f79dfadaa6ed
 
 `scan-api` is a FastAPI app: `POST /scans`, `GET /scans/{id}`, `GET /scans/{id}/graph`, and `GET /health`. It clones the requested GitHub revision and calls `scanner.scan.export_repository`. After a schema 1.0.0 graph exists, the checkout is deleted and `review` runs each registered check once per route. A check is a hunter prompt and a skeptic prompt. v1 registers IDOR only. The runner does not name vulnerabilities; a later check is another pair and another pass.
 
-For each route and check the runner makes `agentCount` calls on the scan's `model`, alternating hunter and skeptic. Each call receives that route, the neighbor routes it links, and the symbol-index entries those name. A vote is `check`, `routeId`, `role` (`hunter` or `skeptic`), `verdict` (`present`, `absent`, or `inconclusive`), and a short `reason`. A `present` vote also carries the `dataAccessId` it cites. A finding is written only when `present` votes on that route and check reach `agreementThreshold`. It stores the check id, route id, threshold, present count, those vote ids, and the cited `dataAccessIds`. On a route with partial coverage it also stores `routeCoverage`. It does not merge reasons. Votes below the threshold are kept.
+### Review agents
 
-On a route with partial slice coverage, a `present` vote stands only when it cites one of that route's data accesses and every call on the recorded path from the handler to that access is `resolved`. Unresolved calls elsewhere in the route do not block it. Otherwise, or when a snippet the check needs is missing, the `present` vote is stored as `inconclusive`. A timeout, non-JSON, a vote for another route, or an unknown verdict is `inconclusive`, the graph is still returned, and the scan stays `partial`. The scan is `completed` only when every route has a full vote set for every registered check and no review call failed. Missing `model`, or `agreementThreshold` above `agentCount`, is rejected before any call. The scan's `model` is the name sent to an OpenAI-compatible chat completions endpoint. `REVIEW_MODEL_BASE_URL` is the base URL and defaults to `https://api.openai.com/v1`. `REVIEW_MODEL_API_KEY` is the key. A missing key does not call the network: each expected vote is stored as `inconclusive`, the graph is kept, and the scan stays `partial`.
+Review runs in `src/review`. The hunter and skeptic are deep agents (`deepagents` on LangGraph) that read the graph through read-only tools instead of receiving it in their prompt. The repository is never visible to them; the checkout is gone before review starts.
+
+| Level | Tools | What it returns |
+|---|---|---|
+| 0 | `repo_map` | frameworks, route groups, the objects routes load or change, scanner gaps |
+| 1 | `list_routes` | one line per route: method and path, auth kinds, data accesses with `inPredicate`, coverage |
+| 2 | `route_summary` | one route without code: parameters, identity bindings, auth steps, data accesses with ownership evidence and call-path names, related routes |
+| 3 | `data_access`, `auth_step`, `call_tree`, `symbol` | snippets, the recorded call path with call sites, signatures |
+| — | `routes_touching` | every access to one object across routes, to compare their ownership evidence |
+
+An agent starts from the target route's level-2 summary (about 1-2k tokens), opens what its verdict rests on, may hand a long trace to the `route-explorer` subagent through `task`, and ends with one `SubmitVote` call: `routeId`, `verdict`, `reason`, `dataAccessId` (required for `present`) and the `evidence` ids. File tools and deepagents' general-purpose subagent are not offered. Each agent has a model-call budget, and one retry that continues its conversation when it ends without a vote. Graph text reaches the agent as evidence; the prompts say it is never instructions.
+
+The orchestrator (`review.runner`) is a deterministic LangGraph graph. It plans a ledger of every (route, check) pair, runs `agentCount` agents per pair (hunter first, alternating) with bounded concurrency, and closes the ledger:
+
+- `reviewed`: every agent voted.
+- `not_applicable`: the route has no data access, so a `present` vote could not cite one; no model call is made.
+- `partial`: an agent ended without a usable vote (no vote after the retry, a vote for another route, a provider error).
+- `not_reviewed`: the provider refused further requests (`insufficient_quota`); later runs are not sent.
+
+The scan is `completed` only when every pair is `reviewed` or `not_applicable`. `GET /scans/{id}` returns the ledger as `coverage` and the token usage per model as `usage`.
+
+A vote is `check`, `routeId`, `role`, `verdict` (`present`, `absent`, `inconclusive`), `reason`, the cited `dataAccessId`, `evidence`, and `trail` (the agent's tool calls). The gate (`review.gate`) decides whether a `present` vote stands: it must cite one of the route's data accesses, and on a route with partial coverage every call on the recorded path from the handler to that access must be `resolved`. A `present` vote the gate overrides is stored `inconclusive` and keeps the agent's claim as `modelVerdict` and `modelReason`. A finding is written when standing `present` votes on a route and check reach `agreementThreshold`; it stores the vote ids and cited `dataAccessIds`, and `routeCoverage` on a partial route.
+
+Missing `model`, or `agreementThreshold` above `agentCount`, is rejected before any call. The scan's `model` is the name sent to an OpenAI-compatible chat completions endpoint: `REVIEW_MODEL_BASE_URL` (default `https://api.openai.com/v1`, https or localhost only) and `REVIEW_MODEL_API_KEY`. The client backs off on 429 and 5xx responses. A missing key does not call the network: each expected vote is stored as `inconclusive`, the graph is kept, and the scan stays `partial`.
 
 `GET /scans/{id}` returns the votes and findings. `GET /scans/{id}/graph` is still the schema 1.0.0 document. `unresolvedGaps` stay in that document.
 

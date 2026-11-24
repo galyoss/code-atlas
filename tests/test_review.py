@@ -1,542 +1,282 @@
-"""IDOR review with a fake model. No live model and no repository checkout."""
+"""IDOR review with deep agents on a scripted chat model. No live model and no repository checkout.
+
+The scripted model really calls the graph tools and votes through SubmitVote, so the
+whole path runs: deepagents, the tools, the gate, the coverage ledger.
+"""
 
 import json
 import socket
 from pathlib import Path
 
-from fastapi.testclient import TestClient
+import pytest
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
+from pydantic import Field
 
-from review.model import ChatCompletionsClient
+from review.agents import AgentBudget
+from review.graph_index import GraphIndex
+from review.model import ModelConfigError, ModelKeyMissing, chat_model
 from review.registry import registered_checks
 from review.runner import review_graph
+from review.tools import graph_tools
 from scan_api.access import Revision
-from scan_api.server import create_app
 from scan_api.service import ScanService
 from scan_api.store import Store
 
 ROOT = Path(__file__).resolve().parents[1]
 AEGRA = ROOT / "docs" / "code-graph-example-aegra.json"
-EXAMPLE = ROOT / "docs" / "code-graph-example.json"
 SHA = "a" * 40
 CHECK = registered_checks()[0]
 
 
-class FakeModel:
-    def __init__(self, decide):
-        self.decide = decide
-        self.calls = []
+class ScriptedModel(BaseChatModel):
+    """Calls `decide(target_route_id, messages, system_prompt)` for every turn."""
 
-    def complete(self, *, model, system, user):
-        self.calls.append({"model": model, "system": system, "user": user})
-        return self.decide(model, system, user)
+    decide: object
+    calls: list = Field(default_factory=list)
+    offered: list = Field(default_factory=list)
 
+    @property
+    def _llm_type(self) -> str:
+        return "scripted"
 
-def _body(**overrides):
-    payload = {"repositoryUrl": "https://github.com/acme/app", "model": "reviewer"}
-    payload.update(overrides)
-    return payload
+    def bind_tools(self, tools, **kwargs):
+        self.offered.append(sorted(getattr(tool, "name", None) or tool.get("name") or tool["function"]["name"] for tool in tools))
+        return self
 
-
-def _run(tmp_path, document, client, **overrides):
-    original = json.loads(json.dumps(document))
-    checkout = {}
-
-    def resolve(url, revision):
-        return Revision("https://github.com/acme/app", "acme", "app", revision or "main", SHA)
-
-    def clone(url, sha, dest: Path):
-        checkout["path"] = dest
-        dest.mkdir(parents=True, exist_ok=True)
-        (dest / "app.py").write_text("print('secret')\n", encoding="utf-8")
-
-    def export(path: Path):
-        return json.loads(json.dumps(original))
-
-    class _AfterCheckout:
-        def complete(self, **kwargs):
-            assert checkout["path"].exists() is False
-            return client.complete(**kwargs)
-
-    service = ScanService(
-        Store(tmp_path / "scans"),
-        resolve=resolve,
-        clone=clone,
-        export=export,
-        joern_home=lambda: Path("/opt/joern"),
-        model_client=_AfterCheckout(),
-    )
-    status, created = service.create(_body(**overrides))
-    assert status == 202
-    service.execute(created["id"])
-    code, job = service.get(created["id"])
-    assert code == 200
-    assert job["graph"] == original
-    assert checkout["path"].exists() is False
-    return service, job
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        system = messages[0].content if messages and messages[0].type == "system" else ""
+        target = _target(messages)
+        self.calls.append({"target": target, "system": system, "messages": messages})
+        message = self.decide(target, messages, system)
+        if isinstance(message, Exception):
+            raise message
+        message.usage_metadata = {"input_tokens": 100, "output_tokens": 10, "total_tokens": 110}
+        message.response_metadata = {"model_name": "scripted-1"}
+        return ChatResult(generations=[ChatGeneration(message=message)])
 
 
-def _route(route_id="route_item", *, coverage="complete", snippet="return Item.get(item_id)"):
+def _target(messages) -> str | None:
+    for message in messages:
+        if isinstance(message, HumanMessage) and "targetRouteId" in str(message.content):
+            return json.loads(str(message.content).split("\n\n", 1)[1])["targetRouteId"]
+    return None
+
+
+def _tools_used(messages) -> list[str]:
+    return [message.name for message in messages if isinstance(message, ToolMessage)]
+
+
+def _call(name, args, ident):
+    return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": ident}])
+
+
+def reads_then_votes(verdict_for, access_for=lambda route_id: "da_load"):
+    """Open the cited access with data_access, then vote."""
+
+    def decide(target, messages, system):
+        if "data_access" not in _tools_used(messages):
+            return _call("data_access", {"route_id": target, "access_id": access_for(target)}, "c1")
+        verdict = verdict_for(target, system)
+        args = {"routeId": target, "verdict": verdict, "reason": f"scripted {verdict}", "evidence": [access_for(target)]}
+        if verdict == "present":
+            args["dataAccessId"] = access_for(target)
+        return _call("SubmitVote", args, "c2")
+
+    return decide
+
+
+def _route(route_id="route_item", *, coverage="complete", helper="resolved", accesses=True, snippet="Item.get(item_id)"):
     access = {
         "id": "da_load",
+        "callId": "call_get",
+        "operation": "load",
+        "object": {"name": "Item", "symbolId": "sym_item"},
+        "paramFlows": [{"entryParamId": "param_item_id", "field": "Item.id", "confidence": "exact"}],
         "ownershipEvidence": {"inPredicate": "no", "stampedOnWrite": "not_applicable"},
     }
     if snippet is not None:
-        access["snippet"] = {"text": snippet, "truncated": False}
+        access["snippet"] = {"text": snippet, "truncated": False, "range": {"file": "app.py", "startLine": 9, "endLine": 9}}
     return {
         "id": route_id,
+        "httpMethod": "GET",
+        "pathTemplate": f"/{route_id}/{{item_id}}",
+        "entryParams": [{"id": "param_item_id", "name": "item_id", "location": "path", "namesObject": "yes"}],
         "authChain": [
             {
                 "id": "auth_user",
                 "symbolId": "sym_user",
+                "kind": "authentication",
+                "bindsObjectToCaller": "no",
                 "snippet": {"text": "def current_user():\n    return user", "truncated": False},
             }
         ],
-        "dataAccesses": [access],
+        "callGraph": [
+            {"id": "call_str", "resolution": "ambiguous", "calleeName": "handler", "children": []},
+            {
+                "id": "call_helper",
+                "resolution": helper,
+                "calleeName": "load_item",
+                "children": [{"id": "call_get", "resolution": "external", "calleeName": "get", "children": []}],
+            },
+        ],
+        "dataAccesses": [access] if accesses else [],
         "relatedRoutes": [],
-        "budget": {
-            "coverage": {"authChain": coverage, "callGraph": coverage, "dataFlow": coverage},
-        },
+        "budget": {"coverage": {"authChain": coverage, "callGraph": coverage, "dataFlow": coverage}},
     }
 
 
-def _document(route):
+def _document(*routes):
     return {
         "schemaVersion": "1.0.0",
-        "routes": [route],
+        "routes": list(routes) or [_route()],
         "symbolIndex": [{"id": "sym_user", "qualifiedName": "app.auth.current_user"}],
     }
 
 
-def _reply(route_id, verdict, reason):
-    return json.dumps({"routeId": route_id, "verdict": verdict, "reason": reason})
+def _review(document, decide, **kwargs):
+    model = ScriptedModel(decide=decide)
+    params = {"model": "reviewer", "agent_count": 2, "agreement_threshold": 2, "max_concurrency": 1}
+    params.update(kwargs)
+    return review_graph(document, chat_model=model, **params), model
 
 
 def test_only_idor_is_registered_and_the_runner_does_not_name_it():
     assert [check.id for check in registered_checks()] == ["idor"]
-    source = (ROOT / "src" / "review" / "runner.py").read_text(encoding="utf-8")
-    assert "idor" not in source.lower()
+    for name in ("runner.py", "agents.py", "tools.py", "graph_index.py", "gate.py"):
+        source = (ROOT / "src" / "review" / name).read_text(encoding="utf-8")
+        assert "idor" not in source.lower(), name
 
 
-def test_aegra_post_and_get_are_absent(tmp_path):
-    document = json.loads(AEGRA.read_text(encoding="utf-8"))
-
-    def decide(model, system, user):
-        route_id = json.loads(user)["route"]["id"]
-        return _reply(route_id, "absent", "The included predicate ties the thread to the caller.")
-
-    model = FakeModel(decide)
-    _, job = _run(tmp_path, document, model)
-    assert job["status"] == "completed"
-    assert job["findings"] == []
-    by_route = {}
-    for call in model.calls:
-        body = json.loads(call["user"])
-        assert call["model"] == "reviewer"
-        by_route.setdefault(body["route"]["id"], []).append(call["system"])
-        assert "print('secret')" not in call["user"]
-    assert set(by_route) == {"route_post_thread_runs", "route_get_thread"}
-    for prompts in by_route.values():
-        assert prompts == [CHECK.hunter_prompt, CHECK.skeptic_prompt]
-    assert {(vote["routeId"], vote["role"], vote["verdict"]) for vote in job["votes"]} == {
-        ("route_post_thread_runs", "hunter", "absent"),
-        ("route_post_thread_runs", "skeptic", "absent"),
-        ("route_get_thread", "hunter", "absent"),
-        ("route_get_thread", "skeptic", "absent"),
-    }
-
-
-def test_synthetic_load_by_id_agrees_once(tmp_path):
-    document = json.loads(EXAMPLE.read_text(encoding="utf-8"))
-
-    def decide(model, system, user):
-        body = json.loads(user)
-        route_id = body["route"]["id"]
-        if system == CHECK.hunter_prompt:
-            role = "hunter"
-        elif system == CHECK.skeptic_prompt:
-            role = "skeptic"
-        else:
-            raise AssertionError("unexpected prompt")
-        if route_id == "route_post_thread_runs":
-            return _reply(route_id, "present", f"{role} names app/api/runs.py:15")
-        return _reply(route_id, "absent", f"{role} sees the owner filter at app/api/threads.py:14")
-
-    model = FakeModel(decide)
-    service, job = _run(tmp_path, document, model, agentCount=2, agreementThreshold=2)
-    assert job["status"] == "completed"
-    assert len(job["findings"]) == 1
-    finding = job["findings"][0]
-    assert set(finding) == {
-        "id",
-        "check",
-        "routeId",
-        "agreementThreshold",
-        "presentCount",
-        "voteIds",
-    }
-    assert finding["check"] == "idor"
-    assert finding["routeId"] == "route_post_thread_runs"
-    assert finding["agreementThreshold"] == 2
-    assert finding["presentCount"] == 2
-    votes = {vote["id"]: vote for vote in job["votes"]}
-    agreed = [votes[vote_id] for vote_id in finding["voteIds"]]
-    assert [vote["role"] for vote in agreed] == ["hunter", "skeptic"]
-    assert {vote["verdict"] for vote in agreed} == {"present"}
-    assert {vote["reason"] for vote in agreed} == {
-        "hunter names app/api/runs.py:15",
-        "skeptic names app/api/runs.py:15",
-    }
-    assert "app/api/runs.py" not in json.dumps(finding)
-    get_votes = [vote for vote in job["votes"] if vote["routeId"] == "route_get_thread"]
-    assert [vote["verdict"] for vote in get_votes] == ["absent", "absent"]
-    assert all(vote["id"] not in finding["voteIds"] for vote in get_votes)
-
-    post_calls = [
-        json.loads(call["user"])
-        for call in model.calls
-        if json.loads(call["user"])["route"]["id"] == "route_post_thread_runs"
-    ]
-    assert post_calls
-    assert [item["id"] for item in post_calls[0]["neighborRoutes"]] == ["route_get_thread"]
-    names = {item["id"] for item in post_calls[0]["symbolIndex"]}
-    assert {"sym_thread", "sym_get_current_user", "sym_get_thread"} <= names
-
-    api = TestClient(create_app(service))
-    got = api.get(f"/scans/{job['id']}")
-    assert got.status_code == 200
-    assert got.json()["findings"] == job["findings"]
-    assert got.json()["votes"] == job["votes"]
-    graph = api.get(f"/scans/{job['id']}/graph")
-    assert graph.status_code == 200
-    assert graph.json()["schemaVersion"] == "1.0.0"
-    assert graph.json() == job["graph"]
-    assert "votes" not in graph.json()
-    assert "findings" not in graph.json()
-
-
-def test_present_below_threshold_keeps_votes_and_writes_no_finding(tmp_path):
-    verdicts = ["present", "inconclusive", "inconclusive"]
-    seen = {"n": 0}
-
-    def decide(model, system, user):
-        route_id = json.loads(user)["route"]["id"]
-        verdict = verdicts[seen["n"]]
-        seen["n"] += 1
-        return _reply(route_id, verdict, f"scripted {verdict}")
-
-    _, job = _run(
-        tmp_path,
-        _document(_route()),
-        FakeModel(decide),
-        agentCount=3,
-        agreementThreshold=2,
-    )
-    assert job["status"] == "completed"
-    assert job["findings"] == []
-    assert [vote["verdict"] for vote in job["votes"]] == verdicts
-    assert [vote["role"] for vote in job["votes"]] == ["hunter", "skeptic", "hunter"]
-    assert [vote["reason"] for vote in job["votes"]] == [
-        "scripted present",
-        "scripted inconclusive",
-        "scripted inconclusive",
-    ]
-
-
-def test_present_on_a_partial_slice_is_stored_inconclusive(tmp_path):
-    document = json.loads(AEGRA.read_text(encoding="utf-8"))
-    for route in document["routes"]:
-        coverage = route["budget"]["coverage"]
-        assert coverage["authChain"] == "partial"
-        assert coverage["callGraph"] == "partial"
-        assert coverage["dataFlow"] == "partial"
-
-    def decide(model, system, user):
-        route_id = json.loads(user)["route"]["id"]
-        return _reply(route_id, "present", "The model claims a missing owner check.")
-
-    model = FakeModel(decide)
-    _, job = _run(tmp_path, document, model)
-    assert job["status"] == "completed"
-    assert job["findings"] == []
-    assert len(model.calls) == 4
-    assert {vote["verdict"] for vote in job["votes"]} == {"inconclusive"}
-    assert {vote["reason"] for vote in job["votes"]} == {
-        "Slice coverage is not complete and the present vote did not cite a data access on this route."
-    }
-
-
-def test_missing_snippet_blocks_a_present_vote(tmp_path):
-    def decide(model, system, user):
-        route_id = json.loads(user)["route"]["id"]
-        return _reply(route_id, "present", "Looks missing.")
-
-    _, job = _run(tmp_path, _document(_route(snippet=None)), FakeModel(decide))
-    assert job["status"] == "completed"
-    assert job["findings"] == []
-    assert [vote["verdict"] for vote in job["votes"]] == ["inconclusive", "inconclusive"]
-    assert {vote["reason"] for vote in job["votes"]} == {
-        "A data-access snippet this check needs is missing."
-    }
-
-
-def test_failed_calls_stay_partial_and_do_not_invent_a_finding(tmp_path):
-    route_id = "route_item"
-    seen = {"n": 0}
-
-    def decide(model, system, user):
-        kind = seen["n"]
-        seen["n"] += 1
-        if kind == 0:
-            raise TimeoutError("timed out")
-        if kind == 1:
-            return "not json"
-        if kind == 2:
-            return json.dumps({"routeId": "route_other", "verdict": "present", "reason": "wrong route"})
-        return json.dumps({"routeId": route_id, "verdict": "likely", "reason": "bad verdict"})
-
-    model = FakeModel(decide)
-    _, job = _run(
-        tmp_path,
-        _document(_route()),
-        model,
-        agentCount=4,
-        agreementThreshold=1,
-    )
-    assert job["status"] == "partial"
-    assert job["progress"] == "Review did not finish a full vote set. The code graph is available."
-    assert job["error"] is None
-    assert job["findings"] == []
-    assert job["graph"]["schemaVersion"] == "1.0.0"
-    assert [vote["verdict"] for vote in job["votes"]] == ["inconclusive"] * 4
-    assert [vote["routeId"] for vote in job["votes"]] == [route_id] * 4
-    assert [vote["reason"] for vote in job["votes"]] == [
-        "timed out",
-        "The model did not return JSON.",
-        "The vote named a different route.",
-        "The vote used an unknown verdict.",
-    ]
-
-
-def test_agreement_is_kept_when_another_call_fails(tmp_path):
-    seen = {"n": 0}
-
-    def decide(model, system, user):
-        kind = seen["n"]
-        seen["n"] += 1
-        route_id = json.loads(user)["route"]["id"]
-        if kind == 2:
-            raise TimeoutError("timed out")
-        return _reply(route_id, "present", f"vote {kind} at item.py:4")
-
-    _, job = _run(
-        tmp_path,
-        _document(_route()),
-        FakeModel(decide),
-        agentCount=3,
-        agreementThreshold=2,
-    )
-    assert job["status"] == "partial"
-    assert job["error"] is None
-    assert job["graph"]["schemaVersion"] == "1.0.0"
-    assert len(job["findings"]) == 1
-    finding = job["findings"][0]
-    assert finding["presentCount"] == 2
-    assert finding["agreementThreshold"] == 2
-    assert len(finding["voteIds"]) == 2
-    assert "item.py" not in json.dumps(finding)
-    votes = {vote["id"]: vote for vote in job["votes"]}
-    assert [votes[vote_id]["verdict"] for vote_id in finding["voteIds"]] == ["present", "present"]
-    assert [vote["verdict"] for vote in job["votes"]] == ["present", "present", "inconclusive"]
-
-
-def test_missing_model_key_stores_inconclusive_and_does_not_open_a_socket(tmp_path, monkeypatch):
-    monkeypatch.delenv("REVIEW_MODEL_API_KEY", raising=False)
-    opened = {"n": 0}
-
-    def refuse(*args, **kwargs):
-        opened["n"] += 1
-        raise AssertionError("socket opened")
-
-    monkeypatch.setattr(socket, "socket", refuse)
-    monkeypatch.setattr(socket, "create_connection", refuse)
-
-    def resolve(url, revision):
-        return Revision("https://github.com/acme/app", "acme", "app", "main", SHA)
-
-    def clone(url, sha, dest: Path):
-        dest.mkdir(parents=True, exist_ok=True)
-
-    document = _document(_route())
-
-    def export(path: Path):
-        return json.loads(json.dumps(document))
-
-    service = ScanService(
-        Store(tmp_path / "scans"),
-        resolve=resolve,
-        clone=clone,
-        export=export,
-        joern_home=lambda: Path("/opt/joern"),
-    )
-    _, created = service.create(_body(model="reviewer"))
-    service.execute(created["id"])
-    _, job = service.get(created["id"])
-    assert opened["n"] == 0
-    assert job["status"] == "partial"
-    assert job["error"] is None
-    assert job["findings"] == []
-    assert job["graph"] == document
-    assert job["graph"]["schemaVersion"] == "1.0.0"
-    assert [vote["verdict"] for vote in job["votes"]] == ["inconclusive", "inconclusive"]
-    assert {vote["reason"] for vote in job["votes"]} == {"The model key is not configured."}
-
-
-class _Body:
-    def __init__(self, payload: dict):
-        self._raw = json.dumps(payload).encode("utf-8")
-
-    def read(self) -> bytes:
-        return self._raw
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        return False
-
-
-def test_chat_client_sends_the_model_name_and_returns_the_message(monkeypatch):
-    monkeypatch.delenv("REVIEW_MODEL_BASE_URL", raising=False)
-    seen = {}
-
-    def urlopen(request, timeout):
-        seen["url"] = request.full_url
-        seen["timeout"] = timeout
-        seen["auth"] = request.get_header("Authorization")
-        seen["body"] = json.loads(request.data.decode("utf-8"))
-        return _Body(
-            {
-                "choices": [
-                    {
-                        "message": {
-                            "content": '{"routeId":"route_item","verdict":"absent","reason":"tied"}',
-                        }
-                    }
-                ]
-            }
-        )
-
-    client = ChatCompletionsClient(api_key="test-key", urlopen=urlopen)
-    text = client.complete(model="reviewer", system="hunter prompt", user="route json")
-    assert text == '{"routeId":"route_item","verdict":"absent","reason":"tied"}'
-    assert seen["url"] == "https://api.openai.com/v1/chat/completions"
-    assert seen["timeout"] == 60
-    assert seen["auth"] == "Bearer test-key"
-    assert seen["body"] == {
-        "model": "reviewer",
-        "messages": [
-            {"role": "system", "content": "hunter prompt"},
-            {"role": "user", "content": "route json"},
-        ],
-    }
-
-    def custom(request, timeout):
-        seen["custom_url"] = request.full_url
-        return _Body({"choices": [{"message": {"content": "{\"routeId\":\"r\",\"verdict\":\"absent\",\"reason\":\"ok\"}"}}]})
-
-    other = ChatCompletionsClient(
-        base_url="https://models.example.test/v1/",
-        api_key="test-key",
-        urlopen=custom,
-    )
-    assert other.complete(model="other-model", system="s", user="u").startswith("{")
-    assert seen["custom_url"] == "https://models.example.test/v1/chat/completions"
-
-
-def test_unknown_coverage_blocks_present():
-    def decide(model, system, user):
-        route_id = json.loads(user)["route"]["id"]
-        return _reply(route_id, "present", "claimed")
-
-    result = review_graph(
-        _document(_route(coverage="unknown")),
-        model="reviewer",
-        agent_count=1,
-        agreement_threshold=1,
-        client=FakeModel(decide),
-    )
+def test_agents_read_the_graph_and_agree():
+    result, model = _review(_document(), reads_then_votes(lambda route, system: "present"))
     assert result.complete is True
+    assert [vote["role"] for vote in result.votes] == ["hunter", "skeptic"]
+    assert all(vote["trail"] == [{"tool": "data_access", "args": {"route_id": "route_item", "access_id": "da_load"}}] for vote in result.votes)
+    assert [finding["dataAccessIds"] for finding in result.findings] == [["da_load"]]
+    assert result.coverage["byStatus"] == {"reviewed": 1}
+    assert result.usage == {"scripted-1": {"inputTokens": 400, "outputTokens": 40, "cachedInputTokens": 0}}
+    hunter_system = next(call["system"] for call in model.calls if "hunter" in call["system"])
+    assert "route_summary" in hunter_system and "SubmitVote" in hunter_system
+
+
+def test_agents_start_from_the_level_two_summary_not_the_whole_graph():
+    neighbors = [_route(f"route_n{i}") for i in range(30)]
+    first = _route()
+    first["relatedRoutes"] = [{"routeId": n["id"], "relations": ["same_model"]} for n in neighbors]
+    _, model = _review(_document(first, *neighbors), reads_then_votes(lambda route, system: "absent"), route_ids=["route_item"])
+    opening = next(m for m in model.calls[0]["messages"] if isinstance(m, HumanMessage))
+    packet = json.loads(str(opening.content).split("\n\n", 1)[1])
+    assert packet["routeSummary"]["relatedRoutesTotal"] == 30
+    assert "callGraph" not in packet["routeSummary"]
+    assert len(opening.content) < 8000
+
+
+def test_agents_are_offered_graph_tools_the_explorer_and_the_vote_only():
+    _, model = _review(_document(), reads_then_votes(lambda route, system: "absent"), agent_count=1, agreement_threshold=1)
+    assert model.offered[0] == sorted(
+        ["repo_map", "list_routes", "route_summary", "data_access", "auth_step", "call_tree", "symbol", "routes_touching", "task", "SubmitVote"]
+    )
+
+
+def test_present_below_threshold_keeps_votes_and_writes_no_finding():
+    verdict = lambda route, system: "present" if "hunter" in system else "absent"
+    result, _ = _review(_document(), reads_then_votes(verdict))
     assert result.findings == []
-    assert result.votes[0]["verdict"] == "inconclusive"
-    assert "coverage" in result.votes[0]["reason"]
+    assert [vote["verdict"] for vote in result.votes] == ["present", "absent"]
+    assert result.complete is True
 
 
-def _partial_route(helper_resolution):
-    route = _route(coverage="partial")
-    route["dataAccesses"][0]["callId"] = "call_get"
-    route["callGraph"] = [
-        {"id": "call_str", "resolution": "ambiguous", "children": []},
-        {
-            "id": "call_helper",
-            "resolution": helper_resolution,
-            "children": [{"id": "call_get", "resolution": "external", "children": []}],
-        },
-    ]
-    return route
+def test_gate_keeps_the_models_claim_when_it_overrides_an_uncited_present():
+    def decide(target, messages, system):
+        return _call("SubmitVote", {"routeId": target, "verdict": "present", "reason": "claimed"}, "c1")
 
-
-def _cite(access_id):
-    def decide(model, system, user):
-        route_id = json.loads(user)["route"]["id"]
-        return json.dumps(
-            {"routeId": route_id, "verdict": "present", "reason": "claimed", "dataAccessId": access_id}
-        )
-
-    return FakeModel(decide)
+    result, _ = _review(_document(_route(coverage="partial")), decide, agent_count=1, agreement_threshold=1)
+    vote = result.votes[0]
+    assert vote["verdict"] == "inconclusive"
+    assert "did not cite a data access" in vote["reason"]
+    assert vote["modelVerdict"] == "present" and vote["modelReason"] == "claimed"
+    assert result.findings == []
 
 
 def test_present_on_a_partial_route_stands_on_a_resolved_cited_path():
-    route = _partial_route("resolved")
-    result = review_graph(
-        _document(route),
-        model="reviewer",
-        agent_count=2,
-        agreement_threshold=2,
-        client=_cite("da_load"),
-    )
-    assert result.complete is True
+    route = _route(coverage="partial", helper="resolved")
+    result, _ = _review(_document(route), reads_then_votes(lambda r, s: "present"))
     assert [vote["verdict"] for vote in result.votes] == ["present", "present"]
-    assert [vote["dataAccessId"] for vote in result.votes] == ["da_load", "da_load"]
-    assert len(result.findings) == 1
-    assert result.findings[0]["dataAccessIds"] == ["da_load"]
     assert result.findings[0]["routeCoverage"] == route["budget"]["coverage"]
 
 
 def test_unresolved_call_on_the_cited_path_blocks_present():
-    result = review_graph(
-        _document(_partial_route("ambiguous")),
-        model="reviewer",
-        agent_count=1,
-        agreement_threshold=1,
-        client=_cite("da_load"),
-    )
+    result, _ = _review(_document(_route(coverage="partial", helper="ambiguous")), reads_then_votes(lambda r, s: "present"))
     assert result.findings == []
-    assert result.votes[0]["verdict"] == "inconclusive"
-    assert "unresolved call" in result.votes[0]["reason"]
-    assert "dataAccessId" not in result.votes[0]
+    assert all("unresolved call" in vote["reason"] for vote in result.votes)
 
 
-def test_citing_an_access_from_another_route_blocks_present():
-    result = review_graph(
-        _document(_partial_route("resolved")),
-        model="reviewer",
-        agent_count=1,
-        agreement_threshold=1,
-        client=_cite("da_elsewhere"),
-    )
+def test_missing_snippet_blocks_a_present_vote():
+    result, _ = _review(_document(_route(snippet=None)), reads_then_votes(lambda r, s: "present"))
     assert result.findings == []
+    assert all(vote["verdict"] == "inconclusive" for vote in result.votes)
+
+
+def test_routes_without_data_access_are_covered_without_a_model_call():
+    result, model = _review(_document(_route(accesses=False)), reads_then_votes(lambda r, s: "present"))
+    assert model.calls == []
+    assert result.votes == []
+    assert result.coverage["ledger"][0]["status"] == "not_applicable"
+    assert result.complete is True
+
+
+def test_an_agent_without_a_vote_gets_one_retry_then_is_inconclusive():
+    def decide(target, messages, system):
+        return AIMessage(content="I am still thinking.")
+
+    result, model = _review(_document(), decide, agent_count=1, agreement_threshold=1)
+    assert len(model.calls) == 2
     assert result.votes[0]["verdict"] == "inconclusive"
-    assert "did not cite a data access on this route" in result.votes[0]["reason"]
+    assert result.coverage["ledger"][0]["status"] == "partial"
+    assert result.complete is False
+
+
+def test_the_retry_continues_the_conversation():
+    def decide(target, messages, system):
+        if not any("previous attempt" in str(m.content) for m in messages if isinstance(m, HumanMessage)):
+            if "route_summary" not in _tools_used(messages):
+                return _call("route_summary", {"route_id": target}, "c1")
+            return AIMessage(content="done?")
+        return _call("SubmitVote", {"routeId": target, "verdict": "absent", "reason": "late"}, "c2")
+
+    result, _ = _review(_document(), decide, agent_count=1, agreement_threshold=1)
+    vote = result.votes[0]
+    assert vote["verdict"] == "absent" and vote["attempts"] == 2
+    assert vote["trail"] == [{"tool": "route_summary", "args": {"route_id": "route_item"}}]
+
+
+def test_a_vote_for_another_route_is_inconclusive():
+    def decide(target, messages, system):
+        return _call("SubmitVote", {"routeId": "route_other", "verdict": "present", "reason": "x", "dataAccessId": "da_load"}, "c1")
+
+    result, _ = _review(_document(), decide, agent_count=1, agreement_threshold=1)
+    assert result.votes[0]["reason"] == "The vote named a different route."
+    assert result.complete is False
+
+
+def test_route_ids_limit_review_and_ledger():
+    document = _document(_route("route_a"), _route("route_b"))
+    result, model = _review(document, reads_then_votes(lambda r, s: "absent"), route_ids=["route_b"])
+    assert {call["target"] for call in model.calls} == {"route_b"}
+    assert [entry["routeId"] for entry in result.coverage["ledger"]] == ["route_b"]
+
+
+def test_insufficient_quota_stops_further_requests():
+    def decide(target, messages, system):
+        return RuntimeError("Error code: 429 - {'error': {'code': 'insufficient_quota'}}")
+
+    document = _document(_route("route_a"), _route("route_b"))
+    result, model = _review(document, decide)
+    assert len(model.calls) == 1
+    assert {entry["status"] for entry in result.coverage["ledger"]} == {"not_reviewed"}
+    assert result.complete is False
 
 
 def test_a_second_check_is_another_pass():
@@ -549,22 +289,97 @@ def test_a_second_check_is_another_pass():
         def missing_snippet(self, route, neighbors, symbols):
             return None
 
-    def decide(model, system, user):
-        route_id = json.loads(user)["route"]["id"]
-        verdict = "present" if system.startswith("hunter") else "absent"
-        return _reply(route_id, verdict, system)
-
-    result = review_graph(
-        _document(_route()),
-        model="reviewer",
-        agent_count=2,
-        agreement_threshold=1,
-        client=FakeModel(decide),
-        checks=(Other("alpha"), Other("beta")),
-    )
-    assert result.complete is True
+    verdict = lambda route, system: "present" if system.startswith("hunter") else "absent"
+    result, _ = _review(_document(), reads_then_votes(verdict), agreement_threshold=1, checks=(Other("alpha"), Other("beta")))
     assert [vote["check"] for vote in result.votes] == ["alpha", "alpha", "beta", "beta"]
-    assert [vote["role"] for vote in result.votes] == ["hunter", "skeptic", "hunter", "skeptic"]
     assert [finding["check"] for finding in result.findings] == ["alpha", "beta"]
-    assert [finding["presentCount"] for finding in result.findings] == [1, 1]
-    assert all("reason" not in finding for finding in result.findings)
+
+
+def test_tools_answer_wrong_ids_with_a_message():
+    tools = {tool.name: tool for tool in graph_tools(GraphIndex(_document()))}
+    assert set(tools) == {"repo_map", "list_routes", "route_summary", "data_access", "auth_step", "call_tree", "symbol", "routes_touching"}
+    assert "No route" in tools["route_summary"].invoke({"route_id": "nope"})
+    detail = json.loads(tools["data_access"].invoke({"route_id": "route_item", "access_id": "da_load"}))
+    assert [step["id"] for step in detail["callPath"]] == ["call_helper", "call_get"]
+    assert detail["snippet"]["range"] == "app.py:9"
+    touching = json.loads(tools["routes_touching"].invoke({"object_name": "Item"}))
+    assert touching["accesses"][0]["inPredicate"] == "no"
+
+
+def test_chat_model_needs_a_key_and_a_safe_url(monkeypatch):
+    monkeypatch.delenv("REVIEW_MODEL_API_KEY", raising=False)
+    with pytest.raises(ModelKeyMissing):
+        chat_model("gpt-4.1")
+    with pytest.raises(ModelConfigError):
+        chat_model("gpt-4.1", api_key="k", base_url="http://example.com/v1")
+    model = chat_model("gpt-4.1", api_key="k", base_url="http://localhost:8080/v1/")
+    assert model.model_name == "gpt-4.1" and model.temperature == 0
+    assert model.openai_api_base == "http://localhost:8080/v1"
+
+
+# The scan service end to end.
+
+
+def _run(tmp_path, document, model_client, checkout=None, **overrides):
+    original = json.loads(json.dumps(document))
+    checkout = {} if checkout is None else checkout
+
+    def resolve(url, revision):
+        return Revision("https://github.com/acme/app", "acme", "app", revision or "main", SHA)
+
+    def clone(url, sha, dest: Path):
+        checkout["path"] = dest
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "app.py").write_text("print('secret')\n", encoding="utf-8")
+
+    service = ScanService(
+        Store(tmp_path / "scans"),
+        resolve=resolve,
+        clone=clone,
+        export=lambda path: json.loads(json.dumps(original)),
+        joern_home=lambda: Path("/opt/joern"),
+        model_client=model_client,
+    )
+    payload = {"repositoryUrl": "https://github.com/acme/app", "model": "reviewer", "agentCount": 2, "agreementThreshold": 2}
+    payload.update(overrides)
+    status, created = service.create(payload)
+    assert status == 202
+    service.execute(created["id"])
+    code, job = service.get(created["id"])
+    assert code == 200
+    assert job["graph"] == original
+    assert checkout["path"].exists() is False
+    return job, checkout
+
+
+def test_scan_reviews_after_the_checkout_is_gone(tmp_path):
+    checkout = {}
+    vote = reads_then_votes(lambda r, s: "present")
+
+    def decide(target, messages, system):
+        assert checkout["path"].exists() is False
+        return vote(target, messages, system)
+
+    job, _ = _run(tmp_path, _document(), ScriptedModel(decide=decide), checkout)
+    assert job["status"] == "completed"
+    assert len(job["findings"]) == 1
+    assert job["coverage"]["complete"] is True
+    assert job["usage"]["scripted-1"]["inputTokens"] > 0
+
+
+def test_missing_model_key_stores_inconclusive_and_does_not_open_a_socket(tmp_path, monkeypatch):
+    monkeypatch.delenv("REVIEW_MODEL_API_KEY", raising=False)
+
+    def no_socket(*args, **kwargs):
+        raise AssertionError("no network call expected")
+
+    # asyncio still needs its internal socketpair; only outbound connections are refused.
+    monkeypatch.setattr(socket.socket, "connect", no_socket)
+    monkeypatch.setattr(socket, "create_connection", no_socket)
+    document = json.loads(AEGRA.read_text(encoding="utf-8"))
+    job, _ = _run(tmp_path, document, None)
+    assert job["status"] == "partial"
+    assert job["findings"] == []
+    assert {vote["verdict"] for vote in job["votes"]} == {"inconclusive"}
+    assert {vote["reason"] for vote in job["votes"]} == {"The model key is not configured."}
+    assert len(job["votes"]) == 2 * sum(1 for route in document["routes"] if route["dataAccesses"])
