@@ -63,6 +63,6 @@ Totals without known gaps: 16 of 33 with #9, 24 of 33 with #12.
 | Model | Vulnerable routes found | Without known gaps | False alarms on fixed routes | Calls | Input tokens | Cost |
 |---|---|---|---|---|---|---|
 | gpt-4.1 | 19 of 40 | 19 of 33 | 0 of 36 | 176 | 44.1M | $88.10 |
-| gpt-4.1-mini (stopped when credit ran out) | 2 of 29 reviewed | 2 of 23 | 0 of 24 | 100 | 27.5M | $11.00 |
+| gpt-4.1-mini (stopped when credit ran out) | 2 of 28 reviewed | 2 of 22 | 0 of 23 | 100 | 27.5M | $11.00 |
 
 On the 51 routes both runs reviewed, gpt-4.1 found 16 of 28 and gpt-4.1-mini 2 of 28. Of gpt-4.1's 21 misses, 15 have no recorded data access (Rails association loads, known gaps), 1 route is not discovered, and 5 are Open WebUI routes where the model took a container ownership check as covering a second object id in the request.
